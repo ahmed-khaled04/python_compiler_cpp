@@ -14,7 +14,7 @@ const unordered_set<string> KEYWORDS = {
     "break", "class", "continue", "def", "del", "elif", "else", "except",
     "finally", "for", "from", "global", "if", "import", "in", "is",
     "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
-    "try", "while", "with", "yield"
+    "try", "while", "with", "yield","print"
 };
 
 // Python operators
@@ -96,12 +96,39 @@ vector<Token> tokenize(const string& source) {
     bool inString = false;
     char stringQuote = '\0';
     bool inComment = false;
+    bool inMultiLineComment = false;
+    char multiLineQuote = '\0';
 
     for (size_t i = 0; i < source.size(); i++) {
         char c = source[i];
 
-        // Handle comments
-        if (c == '#' && !inString) {
+        // Handle multi-line comments (''' or """)
+        if (!inString && !inComment && !inMultiLineComment &&
+            (c == '\'' || c == '"') && i + 2 < source.size() &&
+            source[i + 1] == c && source[i + 2] == c) {
+
+            inMultiLineComment = true;
+            multiLineQuote = c;
+            i += 2; // Skip the next two quotes
+            continue;
+        }
+
+        // Check for end of multi-line comment
+        if (inMultiLineComment && c == multiLineQuote &&
+            i + 2 < source.size() && source[i + 1] == multiLineQuote &&
+            source[i + 2] == multiLineQuote) {
+            inMultiLineComment = false;
+            i += 2; // Skip the next two quotes
+            continue;
+        }
+
+        if (inMultiLineComment) {
+            if (c == '\n') lineNumber++;
+            continue;
+        }
+
+        // Handle single-line comments
+        if (c == '#' && !inString && !inComment) {
             inComment = true;
             continue;
         }
@@ -122,6 +149,12 @@ vector<Token> tokenize(const string& source) {
             continue;
         }
         else if (inString && c == stringQuote) {
+            // Check if it's an escaped quote
+            if (i > 0 && source[i - 1] == '\\') {
+                currentToken += c;
+                continue;
+            }
+
             inString = false;
             currentToken += c;
             tokens.push_back({ "STRING_LITERAL", currentToken, lineNumber });
@@ -130,6 +163,7 @@ vector<Token> tokenize(const string& source) {
         }
         else if (inString) {
             currentToken += c;
+            if (c == '\n') lineNumber++;
             continue;
         }
 
