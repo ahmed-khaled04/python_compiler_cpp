@@ -15,7 +15,7 @@ const unordered_set<string> KEYWORDS = {
     "break", "class", "continue", "def", "del", "elif", "else", "except",
     "finally", "for", "from", "global", "if", "import", "in", "is",
     "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
-    "try", "while", "with", "yield", "print"
+    "try", "while", "with", "yield"
 };
 
 // Python operators
@@ -77,7 +77,6 @@ bool isStringLiteral(const string& str) {
             (str.front() == '"' && str.back() == '"'));
 }
 
-// Tokenizer
 vector<Token> tokenize(const string& source) {
     vector<Token> tokens;
     string currentToken;
@@ -151,35 +150,7 @@ vector<Token> tokenize(const string& source) {
         if (isspace(c)) {
             if (c == '\n') lineNumber++;
 
-            // Attempt to merge identifiers split by spaces
-            if (!currentToken.empty() && isIdentifier(currentToken)) {
-                // Peek ahead for more identifier chunks
-                size_t j = i + 1;
-                while (j < source.size() && isspace(source[j])) {
-                    if (source[j] == '\n') lineNumber++;
-                    j++;
-                }
-
-                string nextChunk = "";
-                while (j < source.size() && (isalnum(source[j]) || source[j] == '_')) {
-                    nextChunk += source[j];
-                    j++;
-                }
-
-                if (!nextChunk.empty()) {
-                    currentToken += nextChunk;
-                    i = j - 1;
-                    continue;
-                }
-
-                // Finalize the current token
-                tokens.push_back({ "IDENTIFIER", currentToken, lineNumber });
-                currentToken.clear();
-                continue;
-            }
-
             if (!currentToken.empty()) {
-                // Regular classification
                 if (isKeyword(currentToken)) {
                     tokens.push_back({ "KEYWORD", currentToken, lineNumber });
                 }
@@ -198,6 +169,14 @@ vector<Token> tokenize(const string& source) {
                 currentToken.clear();
             }
             continue;
+        }
+
+        // Check if we need to split a keyword from following identifier
+        if (!currentToken.empty() && (isalpha(c) || c == '_')) {
+            if (isKeyword(currentToken)) {
+                tokens.push_back({ "KEYWORD", currentToken, lineNumber });
+                currentToken.clear();
+            }
         }
 
         // Handle delimiters
@@ -272,61 +251,52 @@ vector<Token> tokenize(const string& source) {
     return tokens;
 }
 
-// Print a horizontal line for table borders
 void printHorizontalLine(int tokenColWidth, int valueColWidth, int lineColWidth) {
-    cout << "+-" << string(tokenColWidth, '-') << "-+-" << string(valueColWidth, '-') 
-         << "-+-" << string(lineColWidth, '-') << "-+" << endl;
+    cout << "+-" << string(tokenColWidth, '-') << "-+-" << string(valueColWidth, '-')
+        << "-+-" << string(lineColWidth, '-') << "-+" << endl;
 }
 
-// Print tokens in a formatted table
 void printTokenTable(const vector<Token>& tokens) {
-    // Determine column widths
     int tokenColWidth = 15;
     int valueColWidth = 20;
     int lineColWidth = 5;
-    
+
     for (const auto& token : tokens) {
         if (token.type.length() > tokenColWidth) tokenColWidth = token.type.length();
         if (token.value.length() > valueColWidth) valueColWidth = token.value.length();
     }
 
-    // Print table header
     printHorizontalLine(tokenColWidth, valueColWidth, lineColWidth);
-    cout << "| " << left << setw(tokenColWidth) << "TOKEN TYPE" << " | " 
-         << setw(valueColWidth) << "VALUE" << " | " 
-         << setw(lineColWidth) << "LINE" << " |" << endl;
+    cout << "| " << left << setw(tokenColWidth) << "TOKEN TYPE" << " | "
+        << setw(valueColWidth) << "VALUE" << " | "
+        << setw(lineColWidth) << "LINE" << " |" << endl;
     printHorizontalLine(tokenColWidth, valueColWidth, lineColWidth);
 
-    // Print table rows
     for (const auto& token : tokens) {
-        cout << "| " << left << setw(tokenColWidth) << token.type << " | " 
-             << setw(valueColWidth) << token.value << " | " 
-             << right << setw(lineColWidth) << token.line << " |" << endl;
+        cout << "| " << left << setw(tokenColWidth) << token.type << " | "
+            << setw(valueColWidth) << token.value << " | "
+            << right << setw(lineColWidth) << token.line << " |" << endl;
     }
 
     printHorizontalLine(tokenColWidth, valueColWidth, lineColWidth);
     cout << "Total tokens: " << tokens.size() << endl << endl;
 }
 
-// Symbol table generator
 void generateSymbolTable(const vector<Token>& tokens) {
     struct SymbolEntry {
         int id;
         vector<int> lines;
     };
-    
+
     unordered_map<string, SymbolEntry> symbolTable;
     int currentId = 1;
 
     for (const Token& token : tokens) {
         if (token.type == "IDENTIFIER") {
-            // If identifier not in table, add it with a new ID
             if (symbolTable.find(token.value) == symbolTable.end()) {
-                symbolTable[token.value] = {currentId++, {token.line}};
-            } 
-            // If identifier exists but this line isn't recorded yet, add it
+                symbolTable[token.value] = { currentId++, {token.line} };
+            }
             else {
-                // Check if this line is already recorded
                 bool lineExists = false;
                 for (int line : symbolTable[token.value].lines) {
                     if (line == token.line) {
@@ -343,51 +313,47 @@ void generateSymbolTable(const vector<Token>& tokens) {
 
     cout << "\nSYMBOL TABLE\n";
     cout << "------------\n";
-    
+
     if (symbolTable.empty()) {
         cout << "No identifiers found in the code.\n";
         return;
     }
 
-    // Determine column widths
     int idColWidth = 5;
     int nameColWidth = 20;
     int linesColWidth = 30;
-    
+
     for (const auto& entry : symbolTable) {
         if (entry.first.length() > nameColWidth) {
             nameColWidth = entry.first.length();
         }
     }
 
-    // Print table header
-    cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-') 
-         << "-+-" << string(linesColWidth, '-') << "-+" << endl;
-    cout << "| " << left << setw(idColWidth) << "ID" << " | " 
-         << setw(nameColWidth) << "IDENTIFIER" << " | " 
-         << setw(linesColWidth) << "LINES" << " |" << endl;
-    cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-') 
-         << "-+-" << string(linesColWidth, '-') << "-+" << endl;
+    cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-')
+        << "-+-" << string(linesColWidth, '-') << "-+" << endl;
+    cout << "| " << left << setw(idColWidth) << "ID" << " | "
+        << setw(nameColWidth) << "IDENTIFIER" << " | "
+        << setw(linesColWidth) << "LINES" << " |" << endl;
+    cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-')
+        << "-+-" << string(linesColWidth, '-') << "-+" << endl;
 
-    // Print table rows
     for (const auto& entry : symbolTable) {
         string linesStr;
         for (size_t i = 0; i < entry.second.lines.size(); i++) {
             if (i > 0) linesStr += ", ";
             linesStr += to_string(entry.second.lines[i]);
         }
-        
-        cout << "| " << right << setw(idColWidth) << entry.second.id << " | " 
-             << left << setw(nameColWidth) << entry.first << " | " 
-             << setw(linesColWidth) << linesStr << " |" << endl;
+
+        cout << "| " << right << setw(idColWidth) << entry.second.id << " | "
+            << left << setw(nameColWidth) << entry.first << " | "
+            << setw(linesColWidth) << linesStr << " |" << endl;
     }
 
-    cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-') 
-         << "-+-" << string(linesColWidth, '-') << "-+" << endl;
+    cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-')
+        << "-+-" << string(linesColWidth, '-') << "-+" << endl;
     cout << "Total identifiers: " << symbolTable.size() << endl << endl;
 }
 
-// Main function
 int main() {
     string input;
     cout << "PYTHON LEXICAL ANALYZER\n";
@@ -402,7 +368,6 @@ int main() {
 
     if (option == 1) {
         cout << "\nEnter Python code (end with empty line):\n";
-        cout << "--------------------------------------\n";
         string line;
         while (true) {
             getline(cin, line);
