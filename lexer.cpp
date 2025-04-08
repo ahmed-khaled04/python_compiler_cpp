@@ -22,7 +22,7 @@ const unordered_set<string> KEYWORDS = {
 const unordered_set<string> OPERATORS = {
     "+", "-", "*", "/", "%", "**", "//", "=", "+=", "-=", "*=", "/=",
     "%=", "**=", "//=", "==", "!=", "<", ">", "<=", ">=", "&", "|",
-    "^", "~", "<<", ">>", "and", "or", "not", "is", "in"
+    "^", "~", "<<", ">>", "and", "or", "not", "is"
 };
 
 // Python delimiters
@@ -86,6 +86,20 @@ vector<Token> tokenize(const string& source) {
     bool inComment = false;
     bool inMultiLineComment = false;
     char multiLineQuote = '\0';
+
+    auto flushCurrentToken = [&]() {
+        if (!currentToken.empty()) {
+            string type;
+            if (isKeyword(currentToken)) type = "KEYWORD";
+            else if (isOperator(currentToken)) type = "OPERATOR";
+            else if (isNumber(currentToken)) type = "NUMBER";
+            else if (isIdentifier(currentToken)) type = "IDENTIFIER";
+            else type = "UNKNOWN";
+
+            tokens.push_back({ type, currentToken, lineNumber });
+            currentToken.clear();
+        }
+        };
 
     for (size_t i = 0; i < source.size(); i++) {
         char c = source[i];
@@ -178,6 +192,26 @@ vector<Token> tokenize(const string& source) {
                 currentToken.clear();
             }
         }
+        // Handle floating-point numbers like 10.5
+        if (isdigit(c)) {
+            size_t j = i;
+            string number;
+            bool hasDecimal = false;
+
+            while (j < source.size() && (isdigit(source[j]) || (source[j] == '.' && !hasDecimal))) {
+                if (source[j] == '.') hasDecimal = true;
+                number += source[j];
+                j++;
+            }
+
+            if (number.size() > 1 && isNumber(number)) {
+                flushCurrentToken();
+                tokens.push_back({ "NUMBER", number, lineNumber });
+                i = j - 1;
+                continue;
+            }
+        }
+
 
         // Handle delimiters
         if (isDelimiter(string(1, c))) {
@@ -199,19 +233,7 @@ vector<Token> tokenize(const string& source) {
         }
 
         // Helper function to flush currentToken
-        auto flushCurrentToken = [&]() {
-            if (!currentToken.empty()) {
-                string type;
-                if (isKeyword(currentToken)) type = "KEYWORD";
-                else if (isOperator(currentToken)) type = "OPERATOR";
-                else if (isNumber(currentToken)) type = "NUMBER";
-                else if (isIdentifier(currentToken)) type = "IDENTIFIER";
-                else type = "UNKNOWN";
-
-                tokens.push_back({ type, currentToken, lineNumber });
-                currentToken.clear();
-            }
-        };
+        
 
         // Handle operators
         if (i + 2 < source.size()) {  // Check for 3-character operators first
@@ -242,7 +264,7 @@ vector<Token> tokenize(const string& source) {
             continue;
         }
 
-        
+
         currentToken += c;
     }
 
