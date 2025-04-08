@@ -5,6 +5,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <cctype>
+#include <iomanip>
 
 using namespace std;
 
@@ -14,7 +15,7 @@ const unordered_set<string> KEYWORDS = {
     "break", "class", "continue", "def", "del", "elif", "else", "except",
     "finally", "for", "from", "global", "if", "import", "in", "is",
     "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
-    "try", "while", "with", "yield","print"
+    "try", "while", "with", "yield", "print"
 };
 
 // Python operators
@@ -35,17 +36,7 @@ struct Token {
     int line;
 };
 
-// Function prototypes
-bool isKeyword(const string& str);
-bool isOperator(const string& str);
-bool isDelimiter(const string& str);
-bool isIdentifier(const string& str);
-bool isNumber(const string& str);
-bool isStringLiteral(const string& str);
-vector<Token> tokenize(const string& source);
-void printTokens(const vector<Token>& tokens);
-void generateSymbolTable(const vector<Token>& tokens);
-
+// Helper functions
 bool isKeyword(const string& str) {
     return KEYWORDS.find(str) != KEYWORDS.end();
 }
@@ -60,11 +51,8 @@ bool isDelimiter(const string& str) {
 
 bool isIdentifier(const string& str) {
     if (str.empty() || isdigit(str[0])) return false;
-
     for (char c : str) {
-        if (!isalnum(c) && c != '_') {
-            return false;
-        }
+        if (!isalnum(c) && c != '_') return false;
     }
     return true;
 }
@@ -89,6 +77,7 @@ bool isStringLiteral(const string& str) {
             (str.front() == '"' && str.back() == '"'));
 }
 
+// Tokenizer
 vector<Token> tokenize(const string& source) {
     vector<Token> tokens;
     string currentToken;
@@ -106,19 +95,17 @@ vector<Token> tokenize(const string& source) {
         if (!inString && !inComment && !inMultiLineComment &&
             (c == '\'' || c == '"') && i + 2 < source.size() &&
             source[i + 1] == c && source[i + 2] == c) {
-
             inMultiLineComment = true;
             multiLineQuote = c;
-            i += 2; // Skip the next two quotes
+            i += 2;
             continue;
         }
 
-        // Check for end of multi-line comment
         if (inMultiLineComment && c == multiLineQuote &&
             i + 2 < source.size() && source[i + 1] == multiLineQuote &&
             source[i + 2] == multiLineQuote) {
             inMultiLineComment = false;
-            i += 2; // Skip the next two quotes
+            i += 2;
             continue;
         }
 
@@ -127,8 +114,7 @@ vector<Token> tokenize(const string& source) {
             continue;
         }
 
-        // Handle single-line comments
-        if (c == '#' && !inString && !inComment) {
+        if (c == '#' && !inString) {
             inComment = true;
             continue;
         }
@@ -148,13 +134,7 @@ vector<Token> tokenize(const string& source) {
             currentToken += c;
             continue;
         }
-        else if (inString && c == stringQuote) {
-            // Check if it's an escaped quote
-            if (i > 0 && source[i - 1] == '\\') {
-                currentToken += c;
-                continue;
-            }
-
+        else if (inString && c == stringQuote && (i == 0 || source[i - 1] != '\\')) {
             inString = false;
             currentToken += c;
             tokens.push_back({ "STRING_LITERAL", currentToken, lineNumber });
@@ -171,15 +151,40 @@ vector<Token> tokenize(const string& source) {
         if (isspace(c)) {
             if (c == '\n') lineNumber++;
 
+            // Attempt to merge identifiers split by spaces
+            if (!currentToken.empty() && isIdentifier(currentToken)) {
+                // Peek ahead for more identifier chunks
+                size_t j = i + 1;
+                while (j < source.size() && isspace(source[j])) {
+                    if (source[j] == '\n') lineNumber++;
+                    j++;
+                }
+
+                string nextChunk = "";
+                while (j < source.size() && (isalnum(source[j]) || source[j] == '_')) {
+                    nextChunk += source[j];
+                    j++;
+                }
+
+                if (!nextChunk.empty()) {
+                    currentToken += nextChunk;
+                    i = j - 1;
+                    continue;
+                }
+
+                // Finalize the current token
+                tokens.push_back({ "IDENTIFIER", currentToken, lineNumber });
+                currentToken.clear();
+                continue;
+            }
+
             if (!currentToken.empty()) {
+                // Regular classification
                 if (isKeyword(currentToken)) {
                     tokens.push_back({ "KEYWORD", currentToken, lineNumber });
                 }
                 else if (isOperator(currentToken)) {
                     tokens.push_back({ "OPERATOR", currentToken, lineNumber });
-                }
-                else if (isDelimiter(currentToken)) {
-                    tokens.push_back({ "DELIMITER", currentToken, lineNumber });
                 }
                 else if (isNumber(currentToken)) {
                     tokens.push_back({ "NUMBER", currentToken, lineNumber });
@@ -195,117 +200,210 @@ vector<Token> tokenize(const string& source) {
             continue;
         }
 
-        // Handle operators and delimiters
+        // Handle delimiters
         if (isDelimiter(string(1, c))) {
             if (!currentToken.empty()) {
-                if (isKeyword(currentToken)) {
+                if (isKeyword(currentToken))
                     tokens.push_back({ "KEYWORD", currentToken, lineNumber });
-                }
-                else if (isOperator(currentToken)) {
+                else if (isOperator(currentToken))
                     tokens.push_back({ "OPERATOR", currentToken, lineNumber });
-                }
-                else if (isNumber(currentToken)) {
+                else if (isNumber(currentToken))
                     tokens.push_back({ "NUMBER", currentToken, lineNumber });
-                }
-                else if (isIdentifier(currentToken)) {
+                else if (isIdentifier(currentToken))
                     tokens.push_back({ "IDENTIFIER", currentToken, lineNumber });
-                }
-                else {
+                else
                     tokens.push_back({ "UNKNOWN", currentToken, lineNumber });
-                }
                 currentToken.clear();
             }
             tokens.push_back({ "DELIMITER", string(1, c), lineNumber });
             continue;
         }
 
-        if (isOperator(string(1, c))) {
-            if (!currentToken.empty() && !isOperator(currentToken)) {
-                if (isKeyword(currentToken)) {
+        // Handle operators
+        string opStr(1, c);
+        if (isOperator(opStr)) {
+            if (!currentToken.empty()) {
+                if (isKeyword(currentToken))
                     tokens.push_back({ "KEYWORD", currentToken, lineNumber });
-                }
-                else if (isNumber(currentToken)) {
+                else if (isOperator(currentToken))
+                    tokens.push_back({ "OPERATOR", currentToken, lineNumber });
+                else if (isNumber(currentToken))
                     tokens.push_back({ "NUMBER", currentToken, lineNumber });
-                }
-                else if (isIdentifier(currentToken)) {
+                else if (isIdentifier(currentToken))
                     tokens.push_back({ "IDENTIFIER", currentToken, lineNumber });
-                }
-                else {
+                else
                     tokens.push_back({ "UNKNOWN", currentToken, lineNumber });
-                }
                 currentToken.clear();
             }
-            currentToken += c;
+
+            // Check for multi-character operator
+            if (i + 1 < source.size()) {
+                string twoCharOp = opStr + source[i + 1];
+                if (isOperator(twoCharOp)) {
+                    tokens.push_back({ "OPERATOR", twoCharOp, lineNumber });
+                    i++;
+                    continue;
+                }
+            }
+
+            tokens.push_back({ "OPERATOR", opStr, lineNumber });
             continue;
         }
 
         currentToken += c;
     }
 
-    // Add the last token if exists
+    // Final token
     if (!currentToken.empty()) {
-        if (isKeyword(currentToken)) {
+        if (isKeyword(currentToken))
             tokens.push_back({ "KEYWORD", currentToken, lineNumber });
-        }
-        else if (isOperator(currentToken)) {
+        else if (isOperator(currentToken))
             tokens.push_back({ "OPERATOR", currentToken, lineNumber });
-        }
-        else if (isDelimiter(currentToken)) {
+        else if (isDelimiter(currentToken))
             tokens.push_back({ "DELIMITER", currentToken, lineNumber });
-        }
-        else if (isNumber(currentToken)) {
+        else if (isNumber(currentToken))
             tokens.push_back({ "NUMBER", currentToken, lineNumber });
-        }
-        else if (isIdentifier(currentToken)) {
+        else if (isIdentifier(currentToken))
             tokens.push_back({ "IDENTIFIER", currentToken, lineNumber });
-        }
-        else {
+        else
             tokens.push_back({ "UNKNOWN", currentToken, lineNumber });
-        }
     }
 
     return tokens;
 }
 
+// Print a horizontal line for table borders
+void printHorizontalLine(int tokenColWidth, int valueColWidth, int lineColWidth) {
+    cout << "+-" << string(tokenColWidth, '-') << "-+-" << string(valueColWidth, '-') 
+         << "-+-" << string(lineColWidth, '-') << "-+" << endl;
+}
+
+// Print tokens in a formatted table
+void printTokenTable(const vector<Token>& tokens) {
+    // Determine column widths
+    int tokenColWidth = 15;
+    int valueColWidth = 20;
+    int lineColWidth = 5;
+    
+    for (const auto& token : tokens) {
+        if (token.type.length() > tokenColWidth) tokenColWidth = token.type.length();
+        if (token.value.length() > valueColWidth) valueColWidth = token.value.length();
+    }
+
+    // Print table header
+    printHorizontalLine(tokenColWidth, valueColWidth, lineColWidth);
+    cout << "| " << left << setw(tokenColWidth) << "TOKEN TYPE" << " | " 
+         << setw(valueColWidth) << "VALUE" << " | " 
+         << setw(lineColWidth) << "LINE" << " |" << endl;
+    printHorizontalLine(tokenColWidth, valueColWidth, lineColWidth);
+
+    // Print table rows
+    for (const auto& token : tokens) {
+        cout << "| " << left << setw(tokenColWidth) << token.type << " | " 
+             << setw(valueColWidth) << token.value << " | " 
+             << right << setw(lineColWidth) << token.line << " |" << endl;
+    }
+
+    printHorizontalLine(tokenColWidth, valueColWidth, lineColWidth);
+    cout << "Total tokens: " << tokens.size() << endl << endl;
+}
+
+// Symbol table generator
 void generateSymbolTable(const vector<Token>& tokens) {
-    unordered_map<string, vector<int>> symbolTable;
+    struct SymbolEntry {
+        int id;
+        vector<int> lines;
+    };
+    
+    unordered_map<string, SymbolEntry> symbolTable;
+    int currentId = 1;
 
     for (const Token& token : tokens) {
         if (token.type == "IDENTIFIER") {
-            symbolTable[token.value].push_back(token.line);
+            // If identifier not in table, add it with a new ID
+            if (symbolTable.find(token.value) == symbolTable.end()) {
+                symbolTable[token.value] = {currentId++, {token.line}};
+            } 
+            // If identifier exists but this line isn't recorded yet, add it
+            else {
+                // Check if this line is already recorded
+                bool lineExists = false;
+                for (int line : symbolTable[token.value].lines) {
+                    if (line == token.line) {
+                        lineExists = true;
+                        break;
+                    }
+                }
+                if (!lineExists) {
+                    symbolTable[token.value].lines.push_back(token.line);
+                }
+            }
         }
     }
 
-    cout << "\nSymbol Table:\n";
-    cout << "-------------\n";
-    cout << "Identifier\tLines\n";
-    cout << "-------------\n";
+    cout << "\nSYMBOL TABLE\n";
+    cout << "------------\n";
+    
+    if (symbolTable.empty()) {
+        cout << "No identifiers found in the code.\n";
+        return;
+    }
 
+    // Determine column widths
+    int idColWidth = 5;
+    int nameColWidth = 20;
+    int linesColWidth = 30;
+    
     for (const auto& entry : symbolTable) {
-        cout << entry.first << "\t\t";
-        for (size_t i = 0; i < entry.second.size(); i++) {
-            if (i > 0) cout << ", ";
-            cout << entry.second[i];
+        if (entry.first.length() > nameColWidth) {
+            nameColWidth = entry.first.length();
         }
-        cout << "\n";
     }
+
+    // Print table header
+    cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-') 
+         << "-+-" << string(linesColWidth, '-') << "-+" << endl;
+    cout << "| " << left << setw(idColWidth) << "ID" << " | " 
+         << setw(nameColWidth) << "IDENTIFIER" << " | " 
+         << setw(linesColWidth) << "LINES" << " |" << endl;
+    cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-') 
+         << "-+-" << string(linesColWidth, '-') << "-+" << endl;
+
+    // Print table rows
+    for (const auto& entry : symbolTable) {
+        string linesStr;
+        for (size_t i = 0; i < entry.second.lines.size(); i++) {
+            if (i > 0) linesStr += ", ";
+            linesStr += to_string(entry.second.lines[i]);
+        }
+        
+        cout << "| " << right << setw(idColWidth) << entry.second.id << " | " 
+             << left << setw(nameColWidth) << entry.first << " | " 
+             << setw(linesColWidth) << linesStr << " |" << endl;
+    }
+
+    cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-') 
+         << "-+-" << string(linesColWidth, '-') << "-+" << endl;
+    cout << "Total identifiers: " << symbolTable.size() << endl << endl;
 }
 
+// Main function
 int main() {
     string input;
-    cout << "Python Lexical Analyzer\n";
+    cout << "PYTHON LEXICAL ANALYZER\n";
+    cout << "=======================\n";
     cout << "1. Enter Python code manually\n";
     cout << "2. Read from file\n";
     cout << "Choose option (1/2): ";
 
     int option;
     cin >> option;
-    cin.ignore(); // Clear newline
+    cin.ignore();
 
     if (option == 1) {
-        cout << "Enter Python code (end with empty line):\n";
+        cout << "\nEnter Python code (end with empty line):\n";
+        cout << "--------------------------------------\n";
         string line;
-        input = "";
         while (true) {
             getline(cin, line);
             if (line.empty()) break;
@@ -314,7 +412,7 @@ int main() {
     }
     else if (option == 2) {
         string filename;
-        cout << "Enter filename: ";
+        cout << "\nEnter filename: ";
         getline(cin, filename);
 
         ifstream file(filename);
@@ -334,14 +432,9 @@ int main() {
 
     vector<Token> tokens = tokenize(input);
 
-    cout << "\nTokens:\n";
-    cout << "-------\n";
-    cout << "Type\t\tValue\t\tLine\n";
-    cout << "-------\n";
-
-    for (const Token& token : tokens) {
-        cout << token.type << "\t\t" << token.value << "\t\t" << token.line << "\n";
-    }
+    cout << "\nTOKENS FOUND\n";
+    cout << "============\n";
+    printTokenTable(tokens);
 
     generateSymbolTable(tokens);
 
