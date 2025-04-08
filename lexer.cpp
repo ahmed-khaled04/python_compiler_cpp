@@ -198,37 +198,51 @@ vector<Token> tokenize(const string& source) {
             continue;
         }
 
-        // Handle operators
-        string opStr(1, c);
-        if (isOperator(opStr)) {
+        // Helper function to flush currentToken
+        auto flushCurrentToken = [&]() {
             if (!currentToken.empty()) {
-                if (isKeyword(currentToken))
-                    tokens.push_back({ "KEYWORD", currentToken, lineNumber });
-                else if (isOperator(currentToken))
-                    tokens.push_back({ "OPERATOR", currentToken, lineNumber });
-                else if (isNumber(currentToken))
-                    tokens.push_back({ "NUMBER", currentToken, lineNumber });
-                else if (isIdentifier(currentToken))
-                    tokens.push_back({ "IDENTIFIER", currentToken, lineNumber });
-                else
-                    tokens.push_back({ "UNKNOWN", currentToken, lineNumber });
+                string type;
+                if (isKeyword(currentToken)) type = "KEYWORD";
+                else if (isOperator(currentToken)) type = "OPERATOR";
+                else if (isNumber(currentToken)) type = "NUMBER";
+                else if (isIdentifier(currentToken)) type = "IDENTIFIER";
+                else type = "UNKNOWN";
+
+                tokens.push_back({ type, currentToken, lineNumber });
                 currentToken.clear();
             }
+        };
 
-            // Check for multi-character operator
-            if (i + 1 < source.size()) {
-                string twoCharOp = opStr + source[i + 1];
-                if (isOperator(twoCharOp)) {
-                    tokens.push_back({ "OPERATOR", twoCharOp, lineNumber });
-                    i++;
-                    continue;
-                }
+        // Handle operators
+        if (i + 2 < source.size()) {  // Check for 3-character operators first
+            string threeCharOp = string(1, c) + source[i + 1] + source[i + 2];
+            if (isOperator(threeCharOp)) {
+                flushCurrentToken();  // Flush any accumulated token
+                tokens.push_back({ "OPERATOR", threeCharOp, lineNumber });
+                i += 2;  // Skip next two characters
+                continue;
             }
+        }
 
+        if (i + 1 < source.size()) {  // Then check 2-character operators
+            string twoCharOp = string(1, c) + source[i + 1];
+            if (isOperator(twoCharOp)) {
+                flushCurrentToken();  // Flush any accumulated token
+                tokens.push_back({ "OPERATOR", twoCharOp, lineNumber });
+                i++;  // Skip next character
+                continue;
+            }
+        }
+
+        // Finally check single-character operators
+        string opStr(1, c);
+        if (isOperator(opStr)) {
+            flushCurrentToken();  // Flush any accumulated token
             tokens.push_back({ "OPERATOR", opStr, lineNumber });
             continue;
         }
 
+        
         currentToken += c;
     }
 
