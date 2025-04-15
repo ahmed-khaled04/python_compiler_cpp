@@ -9,6 +9,13 @@
 
 using namespace std;
 
+struct SymbolEntry {
+    int id;
+    vector<int> lines;
+    string type = "unknown";  // Data type
+    string value = "undefined";  // Stores the assigned value
+};
+
 // Python keywords
 const unordered_set<string> KEYWORDS = {
     "False", "None", "True", "and", "as", "assert", "async", "await",
@@ -20,8 +27,8 @@ const unordered_set<string> KEYWORDS = {
 
 // Python operators
 const unordered_set<string> OPERATORS = {
-    "+", "-", "", "/", "%", "", "//", "=", "+=", "-=", "=", "/=",
-    "%=", "=", "//=", "==", "!=", "<", ">", "<=", ">=", "&", "|",
+    "+", "-", "*", "/", "%", "**", "//", "=", "+=", "-=", "*=", "/=",
+    "%=", "**=", "//=", "==", "!=", "<", ">", "<=", ">=", "&", "|",
     "^", "~", "<<", ">>", "and", "or", "not", "is"
 };
 
@@ -88,6 +95,8 @@ vector<Token> tokenize(const string& source) {
     State state = State::START;
     char stringQuote = '\0';
     bool escapeNext = false;
+    bool potentialMultilineComment = true;
+    string lastTokenType;
 
     auto flushCurrentToken = [&]() {
         if (!currentToken.empty()) {
@@ -101,6 +110,7 @@ vector<Token> tokenize(const string& source) {
             
             if (!type.empty()) {
                 tokens.push_back({type, currentToken, lineNumber});
+                lastTokenType = type;
             }
             currentToken.clear();
         }
@@ -144,10 +154,21 @@ vector<Token> tokenize(const string& source) {
                 else if (c == '#') {
                     state = State::IN_COMMENT;
                 }
+                else if(c == '-' && i + 1 < source.size() && isdigit(source[i + 1])){
+                    if(lastTokenType.empty() || lastTokenType == "OPERATOR" || lastTokenType == "DELIMITER") {
+                        state = State::IN_NUMBER;
+                        currentToken += c; // start of a negative number
+                    } else {
+                        state = State::IN_OPERATOR;
+                        currentToken += c;
+                    }
+                }
                 else if (isOperator(string(1, c))) {
                     // Check for multi-character operators
                     state = State::IN_OPERATOR;
                     currentToken += c;
+                    if (c == '=' || c == '(') potentialMultilineComment = false;
+
                 }
                 else if (isDelimiter(string(1, c))) {
                     tokens.push_back({"DELIMITER", string(1, c), lineNumber});
@@ -202,15 +223,22 @@ vector<Token> tokenize(const string& source) {
                 break;
 
             case State::IN_MULTILINE_STRING:
-                if (c == stringQuote && i + 2 < source.size() && 
-                    source[i+1] == stringQuote && source[i+2] == stringQuote) {
-                    currentToken += "'''";
-                    tokens.push_back({"STRING_LITERAL", currentToken, lineNumber});
-                    currentToken.clear();
-                    state = State::START;
-                    i += 2; // Skip the closing quotes
+
+                if (c == stringQuote && i + 2 < source.size() &&
+                source[i+1] == stringQuote && source[i+2] == stringQuote) {
+                currentToken += "'''";
+                if (potentialMultilineComment) {
+                    //Do Nothing
                 } else {
-                    currentToken += c;
+                    tokens.push_back({"STRING_LITERAL", currentToken, lineNumber});
+                }
+                currentToken.clear();
+                state = State::START;
+                i += 2; // Skip closing quotes
+                potentialMultilineComment = true;            
+                }   
+                else {
+                currentToken += c;
                 }
                 break;
 
@@ -260,20 +288,19 @@ void printTokenTable(const vector<Token>& tokens) {
 }
 
 void generateSymbolTable(const vector<Token>& tokens) {
-    struct SymbolEntry {
-        int id;
-        vector<int> lines;
-    };
+
 
     unordered_map<string, SymbolEntry> symbolTable;
     int currentId = 1;
 
-    for (const Token& token : tokens) {
+    // First pass: Collect all identifiers and their locations
+    for (size_t i = 0; i < tokens.size(); i++) {
+        const Token& token = tokens[i];
+
         if (token.type == "IDENTIFIER") {
             if (symbolTable.find(token.value) == symbolTable.end()) {
-                symbolTable[token.value] = { currentId++, {token.line} };
-            }
-            else {
+                symbolTable[token.value] = { currentId++, {token.line}, "unknown", "undefined" };
+            } else {
                 bool lineExists = false;
                 for (int line : symbolTable[token.value].lines) {
                     if (line == token.line) {
@@ -288,6 +315,59 @@ void generateSymbolTable(const vector<Token>& tokens) {
         }
     }
 
+    // Second pass: Infer types and track values
+    for (size_t i = 0; i < tokens.size(); i++) {
+        const Token& token = tokens[i];
+
+        // Check for assignments (e.g., `x = 5`)
+        if (token.type == "IDENTIFIER" && i + 1 < tokens.size() && tokens[i+1].value == "=") {
+            string identifier = token.value;
+            const Token& valueToken = tokens[i+2]; // The token after '='
+
+            // Update type inference
+            if (valueToken.type == "NUMBER") {
+                symbolTable[identifier].type = "numeric";
+                symbolTable[identifier].value = valueToken.value;
+            }
+            else if (valueToken.type == "STRING_LITERAL") {
+                symbolTable[identifier].type = "string";
+                symbolTable[identifier].value = valueToken.value;
+            }
+            else if (valueToken.value == "True" || valueToken.value == "False") {
+                symbolTable[identifier].type = "boolean";
+                symbolTable[identifier].value = valueToken.value;
+            }
+            else if (valueToken.value == "[") {
+                symbolTable[identifier].type = "list";
+                symbolTable[identifier].value = "[]";
+            }
+            else if (valueToken.value == "{") {
+                symbolTable[identifier].type = "dict";
+                symbolTable[identifier].value = "{}";
+            }
+            else if (valueToken.type == "IDENTIFIER") {
+                // If assigned from another variable, try to inherit its type/value
+                if (symbolTable.find(valueToken.value) != symbolTable.end()) {
+                    symbolTable[identifier].type = symbolTable[valueToken.value].type;
+                    symbolTable[identifier].value = symbolTable[valueToken.value].value;
+                }
+            }
+        }
+
+        // Check for function definitions (`def foo():`)
+        if (token.value == "def" && i + 1 < tokens.size() && tokens[i+1].type == "IDENTIFIER") {
+            symbolTable[tokens[i+1].value].type = "function";
+            symbolTable[tokens[i+1].value].value = "function";
+        }
+
+        // Check for class definitions (`class Bar:`)
+        if (token.value == "class" && i + 1 < tokens.size() && tokens[i+1].type == "IDENTIFIER") {
+            symbolTable[tokens[i+1].value].type = "class";
+            symbolTable[tokens[i+1].value].value = "class";
+        }
+    }
+
+    // Print the symbol table with the new "VALUE" column
     cout << "\nSYMBOL TABLE\n";
     cout << "------------\n";
 
@@ -296,24 +376,33 @@ void generateSymbolTable(const vector<Token>& tokens) {
         return;
     }
 
+    // Calculate column widths
     int idColWidth = 5;
     int nameColWidth = 20;
+    int typeColWidth = 15;
+    int valueColWidth = 20;
     int linesColWidth = 30;
 
     for (const auto& entry : symbolTable) {
-        if (entry.first.length() > nameColWidth) {
-            nameColWidth = entry.first.length();
-        }
+        if (entry.first.length() > nameColWidth) nameColWidth = entry.first.length();
+        if (entry.second.type.length() > typeColWidth) typeColWidth = entry.second.type.length();
+        if (entry.second.value.length() > valueColWidth) valueColWidth = entry.second.value.length();
     }
 
+    // Print table header
     cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-')
-        << "-+-" << string(linesColWidth, '-') << "-+" << endl;
+         << "-+-" << string(typeColWidth, '-') << "-+-" << string(valueColWidth, '-')
+         << "-+-" << string(linesColWidth, '-') << "-+" << endl;
     cout << "| " << left << setw(idColWidth) << "ID" << " | "
-        << setw(nameColWidth) << "IDENTIFIER" << " | "
-        << setw(linesColWidth) << "LINES" << " |" << endl;
+         << setw(nameColWidth) << "IDENTIFIER" << " | "
+         << setw(typeColWidth) << "TYPE" << " | "
+         << setw(valueColWidth) << "VALUE" << " | "
+         << setw(linesColWidth) << "LINES" << " |" << endl;
     cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-')
-        << "-+-" << string(linesColWidth, '-') << "-+" << endl;
+         << "-+-" << string(typeColWidth, '-') << "-+-" << string(valueColWidth, '-')
+         << "-+-" << string(linesColWidth, '-') << "-+" << endl;
 
+    // Print table rows
     for (const auto& entry : symbolTable) {
         string linesStr;
         for (size_t i = 0; i < entry.second.lines.size(); i++) {
@@ -322,14 +411,18 @@ void generateSymbolTable(const vector<Token>& tokens) {
         }
 
         cout << "| " << right << setw(idColWidth) << entry.second.id << " | "
-            << left << setw(nameColWidth) << entry.first << " | "
-            << setw(linesColWidth) << linesStr << " |" << endl;
+             << left << setw(nameColWidth) << entry.first << " | "
+             << setw(typeColWidth) << entry.second.type << " | "
+             << setw(valueColWidth) << entry.second.value << " | "
+             << setw(linesColWidth) << linesStr << " |" << endl;
     }
 
     cout << "+-" << string(idColWidth, '-') << "-+-" << string(nameColWidth, '-')
-        << "-+-" << string(linesColWidth, '-') << "-+" << endl;
+         << "-+-" << string(typeColWidth, '-') << "-+-" << string(valueColWidth, '-')
+         << "-+-" << string(linesColWidth, '-') << "-+" << endl;
     cout << "Total identifiers: " << symbolTable.size() << endl << endl;
 }
+
 
 int main() {
     string input;
