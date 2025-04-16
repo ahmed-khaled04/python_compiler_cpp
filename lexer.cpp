@@ -27,14 +27,14 @@ const unordered_set<string> KEYWORDS = {
 
 // Python operators
 const unordered_set<string> OPERATORS = {
-    "+", "-", "*", "/", "%", "**", "//", "=", "+=", "-=", "*=", "/=",
-    "%=", "**=", "//=", "==", "!=", "<", ">", "<=", ">=", "&", "|",
-    "^", "~", "<<", ">>", "and", "or", "not", "is"
+    "+", "-", "", "/", "%", "", "//", "=", "+=", "-=", "=", "/=",
+    "%=", "=", "//=", "==", "!=", "<", ">", "<=", ">=", "&", "|",
+    "^", "~", "<<", ">>", "and", "or", "not", "is", ":="
 };
 
 // Python delimiters
 const unordered_set<string> DELIMITERS = {
-    "(", ")", "[", "]", "{", "}", ",", ":", ".", ";", "@"
+    "(", ")", "[", "]", "{", "}", ",", ":", ".", ";", "@", "..."
 };
 
 struct Token {
@@ -74,18 +74,86 @@ bool isIdentifier(const string& str) {
     return true;
 }
 
+bool isHexDigit(char c) {
+    return isdigit(c) || (tolower(c) >= 'a' && tolower(c) <= 'f');
+}
+
+bool isBinaryDigit(char c) {
+    return c == '0' || c == '1';
+}
+
+bool isOctalDigit(char c) {
+    return c >= '0' && c <= '7';
+}
+
 bool isNumber(const string& str) {
-    bool hasDecimal = false;
-    for (char c : str) {
-        if (c == '.') {
-            if (hasDecimal) return false;
-            hasDecimal = true;
+    if (str.empty()) return false;
+    
+    // Check for complex numbers
+    if (tolower(str.back()) == 'j') {
+        if (str.length() == 1) return false;
+        string realPart = str.substr(0, str.length() - 1);
+        return isNumber(realPart);
+    }
+    
+    // Check for hexadecimal
+    if (str.length() > 2 && str[0] == '0' && tolower(str[1]) == 'x') {
+        for (size_t i = 2; i < str.length(); i++) {
+            if (!isHexDigit(str[i])) return false;
         }
-        else if (!isdigit(c)) {
-            return false;
+        return str.length() > 2; // Must have at least one digit after 0x
+    }
+    
+    // Check for binary
+    if (str.length() > 2 && str[0] == '0' && tolower(str[1]) == 'b') {
+        for (size_t i = 2; i < str.length(); i++) {
+            if (!isBinaryDigit(str[i])) return false;
+        }
+        return str.length() > 2;
+    }
+    
+    // Check for octal
+    if (str.length() > 2 && str[0] == '0' && tolower(str[1]) == 'o') {
+        for (size_t i = 2; i < str.length(); i++) {
+            if (!isOctalDigit(str[i])) return false;
+        }
+        return str.length() > 2;
+    }
+    
+    // Regular decimal numbers
+    bool hasDecimal = false;
+    bool hasExponent = false;
+    bool needsExponentDigit = false;
+    
+    for (size_t i = 0; i < str.length(); i++) {
+        char c = str[i];
+        
+        if (isdigit(c)) {
+            if (needsExponentDigit) needsExponentDigit = false;
+            continue;
+        }
+        
+        switch (c) {
+            case '.':
+                if (hasDecimal || hasExponent) return false;
+                hasDecimal = true;
+                break;
+                
+            case 'e': case 'E':
+                if (hasExponent) return false;
+                hasExponent = true;
+                needsExponentDigit = true;
+                if (i+1 < str.length() && (str[i+1] == '+' || str[i+1] == '-')) {
+                    i++;
+                }
+                break;
+                
+            default:
+                return false;
         }
     }
-    return !str.empty();
+    
+    return !needsExponentDigit;
 }
 
 vector<Token> tokenize(const string& source) {
@@ -130,12 +198,27 @@ vector<Token> tokenize(const string& source) {
                 if (isspace(c)) {
                     continue;
                 }
+                else if (c == '.' && i + 2 < source.size() && 
+                source[i+1] == '.' && source[i+2] == '.') {
+                    tokens.push_back({"ELLIPSIS", "...", lineNumber});
+                     i += 2; // Skip next two dots
+                 }
                 else if (isalpha(c) || c == '_') {
                     state = State::IN_IDENTIFIER;
                     currentToken += c;
                 }
                 else if (isdigit(c)) {
                     state = State::IN_NUMBER;
+                    currentToken += c;
+                }
+                else if (c == ':') {
+                    // Start operator processing (could be : or :=)
+                    state = State::IN_OPERATOR;
+                    currentToken += c;
+                }
+                else if (isOperator(string(1, c))) {
+                    // Start operator processing
+                    state = State::IN_OPERATOR;
                     currentToken += c;
                 }
                 else if (c == '\'' || c == '"') {
@@ -171,7 +254,13 @@ vector<Token> tokenize(const string& source) {
 
                 }
                 else if (isDelimiter(string(1, c))) {
-                    tokens.push_back({"DELIMITER", string(1, c), lineNumber});
+                    if (c == '.' && i + 2 < source.size() && 
+                        source[i+1] == '.' && source[i+2] == '.') {
+                         // Handled above in the special case
+                    }
+                    else {
+                         tokens.push_back({"DELIMITER", string(1, c), lineNumber});
+                    }
                 }
                 break;
 
@@ -186,24 +275,72 @@ vector<Token> tokenize(const string& source) {
                 break;
 
             case State::IN_NUMBER:
-                if (isdigit(c) || c == '.') {
-                    currentToken += c;
-                } else {
-                    flushCurrentToken();
-                    state = State::START;
-                    i--; // Reprocess this character
+                // Skip if this dot is part of ellipsis
+                if (c == '.' && i + 2 < source.size() && 
+                    source[i+1] == '.' && source[i+2] == '.') {
+                    // Finish current number token
+                if (isNumber(currentToken)) {
+                    tokens.push_back({"NUMBER", currentToken, lineNumber});
                 }
+                currentToken.clear();
+                state = State::START;
+                // The ellipsis will be caught on next iteration
+                i--; // Reprocess this character
                 break;
-
-            case State::IN_OPERATOR:
-                if (isOperator(currentToken + c)) {
-                    currentToken += c;
-                } else {
-                    flushCurrentToken();
-                    state = State::START;
-                    i--; // Reprocess this character
+            }
+                // Check for valid number continuations
+                if (isdigit(c) || 
+                    c == '.' || 
+                    tolower(c) == 'e' || 
+                    (tolower(c) == 'x' && currentToken == "0") ||
+                    (tolower(c) == 'b' && currentToken == "0") ||
+                    (tolower(c) == 'o' && currentToken == "0") ||
+                    (tolower(c) == 'j' && !currentToken.empty()) ||
+                    (currentToken.size() >= 2 && 
+                    currentToken[0] == '0' && 
+                    tolower(currentToken[1]) == 'x' && 
+                    isHexDigit(c))) {
+                    
+                    // Handle exponent signs
+                    if (tolower(c) == 'e' && i + 1 < source.size() && 
+                        (source[i+1] == '+' || source[i+1] == '-')) {
+                        currentToken += c;
+                        currentToken += source[i+1];
+                        i++;
+                    } 
+                    else {
+                        currentToken += c;
+                    }
+                } 
+                else {
+                    // Check if we have a valid number
+                    if (isNumber(currentToken)) {
+                        tokens.push_back({"NUMBER", currentToken, lineNumber});
+                        currentToken.clear();
+                        state = State::START;
+                        i--; // Reprocess this character
+                    }
+                    else {
+                        // Try to find valid number prefix
+                        bool found = false;
+                        for (size_t len = currentToken.length(); len > 0; len--) {
+                            string prefix = currentToken.substr(0, len);
+                            if (isNumber(prefix)) {
+                                tokens.push_back({"NUMBER", prefix, lineNumber});
+                                currentToken = currentToken.substr(len);
+                                found = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!found) {
+                            // No valid number found - treat as identifier
+                            state = State::IN_IDENTIFIER;
+                        }
+                        i--; // Reprocess this character
+                    }
                 }
-                break;
+            break;
 
             case State::IN_STRING:
                 if (escapeNext) {
@@ -247,6 +384,26 @@ vector<Token> tokenize(const string& source) {
                     state = State::START;
                 }
                 break;
+            case State::IN_OPERATOR:
+                // Special handling for walrus operator
+                if (currentToken == ":" && c == '=') {
+                    currentToken += c;
+                    tokens.push_back({"OPERATOR", currentToken, lineNumber});
+                    currentToken.clear();
+                    state = State::START;
+                }
+                // Check if we can extend the current operator
+                else if (isOperator(currentToken + c)) {
+                    currentToken += c;
+                }
+                else {
+                    // Current operator is complete
+                    tokens.push_back({"OPERATOR", currentToken, lineNumber});
+                    currentToken.clear();
+                    state = State::START;
+                    i--; // Reprocess this character
+                }
+            break;
         }
     }
 
@@ -319,7 +476,7 @@ void generateSymbolTable(const vector<Token>& tokens) {
     for (size_t i = 0; i < tokens.size(); i++) {
         const Token& token = tokens[i];
 
-        // Check for assignments (e.g., `x = 5`)
+        // Check for assignments (e.g., x = 5)
         if (token.type == "IDENTIFIER" && i + 1 < tokens.size() && tokens[i+1].value == "=") {
             string identifier = token.value;
             const Token& valueToken = tokens[i+2]; // The token after '='
@@ -354,13 +511,13 @@ void generateSymbolTable(const vector<Token>& tokens) {
             }
         }
 
-        // Check for function definitions (`def foo():`)
+        // Check for function definitions (def foo():)
         if (token.value == "def" && i + 1 < tokens.size() && tokens[i+1].type == "IDENTIFIER") {
             symbolTable[tokens[i+1].value].type = "function";
             symbolTable[tokens[i+1].value].value = "function";
         }
 
-        // Check for class definitions (`class Bar:`)
+        // Check for class definitions (class Bar:)
         if (token.value == "class" && i + 1 < tokens.size() && tokens[i+1].type == "IDENTIFIER") {
             symbolTable[tokens[i+1].value].type = "class";
             symbolTable[tokens[i+1].value].value = "class";
