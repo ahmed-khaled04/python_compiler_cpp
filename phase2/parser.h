@@ -54,6 +54,8 @@ void parse_import_alias_opt();
 // void parse_dict_pair();
 void parse_loop_statement_list();
 void parse_loop_statement();
+void parse_or_test();
+void parse_inline_if_else();
 
 void next_token();
 bool match(string expectedType);

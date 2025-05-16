@@ -65,7 +65,11 @@ type            → 'int' | 'float' | 'str' | 'bool' | 'None'
 statement_list  → statement statement_list
                 | ε
 
-expression      → bool_term bool_expr_prime
+expression      → bool_term bool_expr_prime inline_if_else_opt
+
+inline_if_else_opt → 'if' expression 'else' expression
+                   | ε
+
 
 bool_expr_prime → 'or' bool_term bool_expr_prime
                 | ε

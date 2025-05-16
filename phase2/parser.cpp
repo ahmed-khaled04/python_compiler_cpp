@@ -129,7 +129,12 @@ void parse_assignment(){
     match("IDENTIFIER");
     match("OPERATOR");
     parse_expression();
-    match("NEWLINE");
+    
+    // Only match NEWLINE if there is one (for ternary expressions)
+    if (peek().type == "NEWLINE") {
+        match("NEWLINE");
+    }
+    
     cout << "DEBUG: Assignment parsing completed" << endl;
 }
 
@@ -258,12 +263,19 @@ void parse_statement_list(){
     cout << "DEBUG: Statement list parsing completed" << endl;
 }
 
-void parse_expression(){
+void parse_expression() {
     cout << "\nDEBUG: Starting expression parsing" << endl;
-    cout << "DEBUG: Current token in expression - Type: " << peek().type 
+    cout << "DEBUG: Current token in expression - Type: " << peek().type
          << ", Value: '" << peek().value << "'" << endl;
+
     parse_bool_term();
     parse_bool_expr_prime();
+
+    // Handle inline if-else
+    if (peek().type == "KEYWORD" && peek().value == "if") {
+        parse_inline_if_else();
+    }
+
     cout << "DEBUG: Expression parsing completed" << endl;
 }
 
@@ -674,6 +686,21 @@ void parse_loop_statement() {
         parse_statement();  // fall back to general statement parsing
     }
 }
+
+void parse_inline_if_else() {
+    cout << "\nDEBUG: Starting inline if/else expression parsing" << endl;
+    
+    // We've already parsed the first expression before 'if'
+    match("KEYWORD");  // match 'if'
+    parse_expression();   // parse condition
+    
+    match("KEYWORD");  // match 'else'
+    parse_expression();  // parse expression after else
+
+    cout << "DEBUG: Inline if/else expression parsing completed" << endl;
+}
+
+
 
 
 int main() {
