@@ -89,16 +89,20 @@ void parse_statement() {
         }
     }
     else if (peek().value == "import" || peek().value == "from") {
-    cout << "DEBUG: Found import statement" << endl;
-    parse_import_stmt();
+        cout << "DEBUG: Found import statement" << endl;
+        parse_import_stmt();
     }
     else if (peek().value == "def") {
-    cout << "DEBUG: Found function definition" << endl;
-    parse_func_def();
+        cout << "DEBUG: Found function definition" << endl;
+        parse_func_def();
     }
     else if (peek().value == "class") {
-    cout << "DEBUG: Found class definition" << endl;
-    parse_class_def();
+        cout << "DEBUG: Found class definition" << endl;
+        parse_class_def();
+    }
+    else if (peek().value == "try") {
+        cout << "DEBUG: Found try statement" << endl;
+        parse_try_stmt();
     }
     else if (peek().value == "return") {
         cout << "DEBUG: Found return statement" << endl;
@@ -257,7 +261,7 @@ void parse_argument_list_prime(){
 void parse_statement_list(){
     cout << "\nDEBUG: Starting statement list parsing" << endl;
     if(peek().type == "IDENTIFIER" || peek().value == "return" || peek().value == "if" || 
-       peek().value == "while" || peek().type == "NEWLINE"){
+       peek().value == "while" || peek().value == "try" || peek().type == "NEWLINE"){
         cout << "DEBUG: Found valid statement" << endl;
         parse_statement();
         parse_statement_list();
@@ -760,6 +764,67 @@ void parse_class_inheritance_opt() {
     } else {
         cout << "DEBUG: No base class (inheritance) specified" << endl;
     }
+}
+
+//TRY CATCH BLOCKS
+void parse_try_stmt() {
+    cout << "\nDEBUG: Starting try statement parsing" << endl;
+    match("KEYWORD");  // 'try'
+    match("OPERATOR"); // ':'
+    match("NEWLINE");
+    match("INDENT");
+    parse_statement_list();
+    match("DEDENT");
+    parse_except_clauses();
+    parse_finally_clause();
+    cout << "DEBUG: Try statement parsing completed" << endl;
+}
+
+void parse_except_clauses() {
+    cout << "\nDEBUG: Starting except clauses parsing" << endl;
+    while (peek().value == "except") {
+        parse_except_clause();
+    }
+    cout << "DEBUG: Except clauses parsing completed" << endl;
+}
+
+void parse_except_clause() {
+    cout << "\nDEBUG: Starting except clause parsing" << endl;
+    match("KEYWORD");  // 'except'
+    
+    // Optional exception type
+    if (peek().type != "OPERATOR" || peek().value != ":") {
+        parse_expression();
+    }
+    
+    // Optional 'as' identifier
+    if (peek().value == "as") {
+        match("KEYWORD");  // 'as'
+        match("IDENTIFIER");
+    }
+    
+    match("OPERATOR"); // ':'
+    match("NEWLINE");
+    match("INDENT");
+    parse_statement_list();
+    match("DEDENT");
+    cout << "DEBUG: Except clause parsing completed" << endl;
+}
+
+void parse_finally_clause() {
+    cout << "\nDEBUG: Checking for finally clause" << endl;
+    if (peek().value == "finally") {
+        cout << "DEBUG: Found finally clause" << endl;
+        match("KEYWORD");  // 'finally'
+        match("OPERATOR"); // ':'
+        match("NEWLINE");
+        match("INDENT");
+        parse_statement_list();
+        match("DEDENT");
+    } else {
+        cout << "DEBUG: No finally clause found" << endl;
+    }
+    cout << "DEBUG: Finally clause parsing completed" << endl;
 }
 
 

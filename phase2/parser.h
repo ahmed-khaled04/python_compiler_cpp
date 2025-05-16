@@ -59,6 +59,12 @@ void parse_inline_if_else();
 void parse_string_key();
 void parse_class_def();
 void parse_class_inheritance_opt();
+void parse_loop_statement_list();
+void parse_loop_statement();
+void parse_try_stmt();
+void parse_except_clauses();
+void parse_except_clause();
+void parse_finally_clause();
 
 void next_token();
 bool match(string expectedType);

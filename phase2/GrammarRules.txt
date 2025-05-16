@@ -3,6 +3,8 @@ program         → statement program
 
 statement       → assignment
                 | augmented_assignment
+		| import_stmt
+		| class_def
                 | return_stmt
                 | if_stmt
                 | while_stmt
@@ -10,6 +12,7 @@ statement       → assignment
                 | func_call
                 | func_def
                 | print_stmt
+                | try_stmt
                 | 'pass' NEWLINE
                 | 'break' NEWLINE
                 | 'continue' NEWLINE
@@ -130,3 +133,35 @@ dict_items_prime → ',' dict_pair dict_items_prime
                  | ε
 
 dict_pair       → STRING ':' expression
+
+import_stmt     → 'import' import_item import_tail NEWLINE
+                | 'from' IDENTIFIER 'import' import_item import_tail NEWLINE
+
+import_item     → IDENTIFIER import_alias_opt
+
+import_tail     → ',' import_item import_tail
+                | ε
+
+import_alias_opt → 'as' IDENTIFIER
+                 | ε
+
+class_def       → 'class' IDENTIFIER class_inheritance_opt ':' NEWLINE INDENT statement DEDENT
+
+class_inheritance_opt → '(' IDENTIFIER ')' 
+                       | ε
+
+try_stmt        → 'try' ':' NEWLINE INDENT statement_list DEDENT except_clauses finally_clause
+
+except_clauses   → except_clause except_clauses
+                | ε
+
+except_clause    → 'except' exception_type_opt exception_var_opt ':' NEWLINE INDENT statement_list DEDENT
+
+exception_type_opt → type
+                   | ε
+
+exception_var_opt  → 'as' IDENTIFIER
+                   | ε
+
+finally_clause   → 'finally' ':' NEWLINE INDENT statement_list DEDENT
+                | ε
