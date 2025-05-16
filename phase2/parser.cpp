@@ -420,7 +420,11 @@ void parse_factor(){
     }
     else if(peek().type == "IDENTIFIER"){
         cout << "DEBUG: Found identifier" << endl;
-        match("IDENTIFIER");
+        if (tokenIndex + 1 < tokens.size() && tokens[tokenIndex + 1].value == "(") {
+            parse_func_call();
+        }   else   {
+            match("IDENTIFIER");
+        }
     }
     else if (peek().value == "{") {
     cout << "DEBUG: Found dictionary literal" << endl;
@@ -485,7 +489,7 @@ void parse_for_stmt() {
     match("KEYWORD");         // 'for'
     match("IDENTIFIER");      // loop variable
     match("KEYWORD");         // 'in'
-    parse_list_literal();         // iterable expression
+    parse_expression();         // iterable expression
     match("OPERATOR");        // ':'
     match("NEWLINE");
     match("INDENT");
