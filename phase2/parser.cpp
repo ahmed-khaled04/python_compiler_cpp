@@ -25,6 +25,59 @@ Token peek(){
     return tokens[tokenIndex];
 }
 
+bool is_assignment_target(int idx, string& op) {
+    // Accepts IDENTIFIER (DOT IDENTIFIER | [expr])*
+    if (tokens[idx].type != "IDENTIFIER") return false;
+    idx++;
+    while (idx < tokens.size()) {
+        if (tokens[idx].type == "DELIMITER" && tokens[idx].value == ".") {
+            idx++;
+            if (idx >= tokens.size() || tokens[idx].type != "IDENTIFIER") return false;
+            idx++;
+        } else if (tokens[idx].type == "DELIMITER" && tokens[idx].value == "[") {
+            // skip over [ ... ]
+            int bracketDepth = 1;
+            idx++;
+            while (idx < tokens.size() && bracketDepth > 0) {
+                if (tokens[idx].type == "DELIMITER" && tokens[idx].value == "[") bracketDepth++;
+                else if (tokens[idx].type == "DELIMITER" && tokens[idx].value == "]") bracketDepth--;
+                idx++;
+            }
+        } else {
+            break;
+        }
+    }
+    // Now, check for assignment operator
+    if (idx < tokens.size() && tokens[idx].type == "OPERATOR") {
+        string val = tokens[idx].value;
+        if (val == "=" || val == "+=" || val == "-=" || val == "*=" ||
+            val == "/=" || val == "%=" || val == "//=") {
+            op = val;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_inside_loop() {
+    // This is a simplified version - in a real implementation, you'd track this in the parser state
+    // For now, we'll just look backward in the token stream to find the nearest loop keyword
+    
+    // Start from current token and go backward
+    for (int i = tokenIndex - 1; i >= 0; i--) {
+        if (tokens[i].value == "for" || tokens[i].value == "while") {
+            // Check if we haven't exited the loop yet (no matching DEDENT)
+            int indent_level = 0;
+            for (int j = i + 1; j < tokenIndex; j++) {
+                if (tokens[j].type == "INDENT") indent_level++;
+                else if (tokens[j].type == "DEDENT") indent_level--;
+            }
+            return indent_level > 0;
+        }
+    }
+    return false;
+}
+
 void advance(){
 
     if(tokenIndex < tokens.size()){
@@ -68,39 +121,42 @@ void parse_statement() {
     cout << "DEBUG: Current token - Type: " << peek().type 
          << ", Value: '" << peek().value << "'" << endl;
 
-    if (peek().type == "IDENTIFIER" && tokenIndex + 1 < tokens.size()) {
-        string nextVal = tokens[tokenIndex + 1].value;
-        if (nextVal == "+=" || nextVal == "-=" || nextVal == "*=" ||
-            nextVal == "/=" || nextVal == "%=" || nextVal == "//=") 
-        {
-            cout << "DEBUG: Found augmented assignment" << endl;
-            parse_augmented_assignment();
-        }
-        else if (nextVal == "=") {
+    string op;
+    if (peek().value == "for") {
+
+        parse_for_stmt();
+
+        return;
+
+    }
+    if (peek().type == "IDENTIFIER" && is_assignment_target(tokenIndex, op)) {
+        if(op == "=") {
             cout << "DEBUG: Found assignment statement" << endl;
             parse_assignment();
+        } else if (op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%=" || op == "//=") {
+            cout << "DEBUG: Found augmented assignment statement" << endl;
+            parse_augmented_assignment();
         }
-        else if (nextVal == "(") {
-            cout << "DEBUG: Found function call" << endl;
-            parse_func_call();
-        } else {
-            cout << "DEBUG: Unexpected second token after IDENTIFIER: '" << nextVal << "'" << endl;
-            exit(1);
-        }
+        
+    }
+    else if(peek().type == "IDENTIFIER" && tokens[tokenIndex + 1].value == "("){
+        cout << "DEBUG: Found function call" << endl;
+        parse_func_call();
     }
     else if (peek().value == "import" || peek().value == "from") {
-        cout << "DEBUG: Found import statement" << endl;
-        parse_import_stmt();
+    cout << "DEBUG: Found import statement" << endl;
+    parse_import_stmt();
     }
     else if (peek().value == "def") {
-        cout << "DEBUG: Found function definition" << endl;
-        parse_func_def();
+    cout << "DEBUG: Found function definition" << endl;
+    parse_func_def();
     }
-    else if (peek().value == "class") {
-        cout << "DEBUG: Found class definition" << endl;
+    else if(peek().value == "class") {
+        cout<< "DEBUG: Found class definition" << endl;
         parse_class_def();
+
     }
-    else if (peek().value == "try") {
+    else if(peek().value == "try"){
         cout << "DEBUG: Found try statement" << endl;
         parse_try_stmt();
     }
@@ -120,9 +176,21 @@ void parse_statement() {
         cout << "DEBUG: Found for-loop" << endl;
         parse_for_stmt();
     }
+    else if (peek().value == "break") {
+        cout << "DEBUG: Found break statement" << endl;
+        parse_break_stmt();
+    }
+    else if (peek().value == "continue") {
+        cout << "DEBUG: Found continue statement" << endl;
+        parse_continue_stmt();
+    }
     else if (peek().type == "NEWLINE") {
         cout << "DEBUG: Found newline" << endl;
         advance();
+    }
+    else if(peek().value == "del"){
+        cout<< "DEBUG: Found delete statement" << endl;
+        parse_del_stmt();
     }
     else {
         cout << "DEBUG: Unexpected token in statement" << endl;
@@ -134,16 +202,47 @@ void parse_statement() {
 
 void parse_assignment(){
     cout << "\nDEBUG: Starting assignment parsing" << endl;
-    match("IDENTIFIER");
+    parse_assign_target();
     match("OPERATOR");
     parse_expression();
-    
     // Only match NEWLINE if there is one (for ternary expressions)
     if (peek().type == "NEWLINE") {
         match("NEWLINE");
     }
-    
+
     cout << "DEBUG: Assignment parsing completed" << endl;
+}
+
+void parse_assign_target(){
+    cout<< "\nDEBUG: Starting assignment target parsing" << endl;
+    parse_primary_target();
+    parse_assign_target_tail();
+    cout << "DEBUG: Assignment target parsing completed" << endl;
+}
+
+void parse_primary_target(){
+    cout<< "\nDEBUG: Starting primary target parsing" << endl;
+    if(peek().type == "IDENTIFIER"){
+        cout << "DEBUG: Found identifier in primary target" << endl;
+        match("IDENTIFIER");
+        if(peek().type == "DELIMITER" && peek().value == "[") {
+            cout << "DEBUG: Found list literal in primary target" << endl;
+            match("DELIMITER");
+            parse_expression();
+            match("DELIMITER");
+        }
+    }
+    cout<< "DEBUG: Primary target parsing completed" << endl;
+   
+}
+
+void parse_assign_target_tail(){
+    if(peek().type == "DELIMITER" && peek().value == "."){
+        cout << "DEBUG: Found dot operator in assignment target" << endl;
+        match("DELIMITER");
+        match("IDENTIFIER");
+        parse_assign_target_tail();
+    }
 }
 
 void parse_return_stmt(){
@@ -261,7 +360,7 @@ void parse_argument_list_prime(){
 void parse_statement_list(){
     cout << "\nDEBUG: Starting statement list parsing" << endl;
     if(peek().type == "IDENTIFIER" || peek().value == "return" || peek().value == "if" || 
-       peek().value == "while" || peek().value == "try" || peek().type == "NEWLINE"){
+       peek().value == "while" || peek().type == "NEWLINE"|| peek().type == "KEYWORD"|| peek().value == "try"){
         cout << "DEBUG: Found valid statement" << endl;
         parse_statement();
         parse_statement_list();
@@ -271,19 +370,16 @@ void parse_statement_list(){
     cout << "DEBUG: Statement list parsing completed" << endl;
 }
 
-void parse_expression() {
+void parse_expression(){
     cout << "\nDEBUG: Starting expression parsing" << endl;
-    cout << "DEBUG: Current token in expression - Type: " << peek().type
+    cout << "DEBUG: Current token in expression - Type: " << peek().type 
          << ", Value: '" << peek().value << "'" << endl;
-
     parse_bool_term();
     parse_bool_expr_prime();
 
-    // Handle inline if-else
     if (peek().type == "KEYWORD" && peek().value == "if") {
         parse_inline_if_else();
     }
-
     cout << "DEBUG: Expression parsing completed" << endl;
 }
 
@@ -420,6 +516,7 @@ void parse_factor(){
     }
     else if(peek().type == "IDENTIFIER"){
         cout << "DEBUG: Found identifier" << endl;
+
         if (tokenIndex + 1 < tokens.size() && tokens[tokenIndex + 1].value == "(") {
             parse_func_call();
         }   else   {
@@ -427,14 +524,9 @@ void parse_factor(){
         }
     }
     else if (peek().value == "{") {
-    cout << "DEBUG: Found dictionary literal" << endl;
-    parse_dict_literal();
+        cout << "DEBUG: Found dictionary literal" << endl;
+        parse_dict_literal();
     }
-    else if (peek().type == "STRING") {
-    cout << "DEBUG: Found string literal" << endl;
-    match("STRING");
-    }
-
     else if(peek().type == "NUMBER"){
         cout << "DEBUG: Found number" << endl;
         match("NUMBER");
@@ -442,8 +534,20 @@ void parse_factor(){
     else if (peek().type == "STRING_QUOTE") {
         cout << "DEBUG: Found string literal" << endl;
         match("STRING_QUOTE");  // Match opening quote
-        if (peek().type == "STRING_LITERAL") {
-            match("STRING_LITERAL");  // Match string content
+        std::string literalContent;
+        while (peek().type != "STRING_QUOTE") {
+            if (peek().type == "END_OF_FILE") {
+                cout << "Syntax error: unterminated string literal" << endl;
+                exit(1);
+            }
+            if (peek().type == "STRING_LITERAL") {
+                match("STRING_LITERAL");
+            } else if (peek().type == "NEWLINE") {
+                match("NEWLINE");
+            } else {
+                cout << "Syntax error: unexpected token inside string literal: " << peek().type << endl;
+                exit(1);
+            }
         }
         match("STRING_QUOTE");  // Match closing quote
     }
@@ -484,18 +588,109 @@ void parse_augmented_assignment() {
 }
 
 void parse_for_stmt() {
+
     cout << "\nDEBUG: Starting for-loop parsing" << endl;
+    if (peek().value != "for") {
+
+        cout << "Syntax error: expected 'for' keyword but found '" << peek().value << "'" << endl;
+        exit(1);
+
+    }
 
     match("KEYWORD");         // 'for'
+
+
+
+    if (peek().type != "IDENTIFIER")    {
+
+
+
+        cout << "Syntax error: expected loop variable, but found '" << peek().value 
+
+        << "' of type '" << peek().type << "'" << endl;
+
+        exit(1);
+
+
+
+        // Additional validation: disallow keywords or literals as loop variable
+
+        string loopVar = peek().value;
+
+        if (loopVar == "for" || loopVar == "in" || loopVar == "if" || loopVar == "while" || peek().type == "NUMBER") {
+
+            cout << "Syntax error: invalid loop variable '" << loopVar << "'" << endl;
+
+            exit(1);
+
+        }
+
+    }
+
     match("IDENTIFIER");      // loop variable
+
+
+
+    if (peek().value != "in") {
+
+        cout << "Syntax error: expected 'in' keyword but found '" << peek().value << "'" << endl;
+
+        exit(1);
+
+    }
+
     match("KEYWORD");         // 'in'
-    parse_expression();         // iterable expression
-    match("OPERATOR");        // ':'
+
+    int exprStartIndex = tokenIndex;
+
+    if (peek().type == "OPERATOR" && peek().value == ":") {
+
+        cout << "Syntax error: expected iterable expression after 'in', but found ':'" << endl;
+        exit(1);
+    }
+    parse_expression();
+
+    // Check if expression was parsed or not
+
+    if (tokenIndex == exprStartIndex) {
+
+        cout << "Syntax error: expected iterator expression after 'in' but found nothing" << endl;
+
+        exit(1);
+
+    }
+
+    if (peek().value != ":") {
+
+        cout << "Syntax error: expected ':' after iterable but found '" << peek().value << "'" << endl;
+        exit(1);
+    }
+
+    match("OPERATOR");       // ':'
+
+    if (peek().type != "NEWLINE") {
+
+        cout << "Syntax error: expected NEWLINE after ':' but found '" << peek().value << "'" << endl;
+
+        exit(1);
+
+    }
     match("NEWLINE");
+
+    if (peek().type != "INDENT") {
+        cout << "Syntax error: expected INDENT after NEWLINE but found '" << peek().value << "'" << endl;
+        exit(1);
+    }
+
     match("INDENT");
     parse_loop_statement_list();
-    match("DEDENT");
+    
+    if (peek().type != "DEDENT") {
+        cout << "Syntax error: expected DEDENT after loop body but found '" << peek().value << "'" << endl;
+        exit(1);
 
+    }
+    match("DEDENT");
     cout << "DEBUG: For-loop parsing completed" << endl;
 }
 
@@ -545,8 +740,8 @@ void parse_func_def() {
     }
 
     match("OPERATOR");        // ':'
-
     // Detect if it's a single-line body
+
     if (peek().type != "NEWLINE") {
         cout << "DEBUG: Detected single-line function definition" << endl;
         parse_statement();  // just one statement (like return, assignment, etc.)
@@ -560,7 +755,6 @@ void parse_func_def() {
 
     cout << "DEBUG: Function definition parsing completed" << endl;
 }
-
 void parse_param_list() {
     cout << "DEBUG: Starting parameter list parsing" << endl;
 
@@ -602,6 +796,10 @@ void parse_type() {
 void parse_import_stmt() {
     cout << "\nDEBUG: Starting import statement parsing" << endl;
 
+    // match("KEYWORD");  // 'import'
+    // parse_import_item();
+    // parse_import_tail();
+    // match("NEWLINE");
     if (peek().value == "import") {
         match("KEYWORD");  // 'import'
         parse_import_item();
@@ -623,12 +821,16 @@ void parse_import_stmt() {
     cout << "DEBUG: Import statement parsing completed" << endl;
 }
 
-
 void parse_import_item() {
     if (peek().type == "IDENTIFIER") {
         match("IDENTIFIER");
         parse_import_alias_opt();
-    } else {
+    } 
+    else if (peek().type == "OPERATOR" && peek().value == "*") {
+        match("OPERATOR");  // '*'
+        parse_import_alias_opt();
+    }
+    else {
         cout << "Syntax error: expected module name in import" << endl;
         exit(1);
     }
@@ -681,57 +883,127 @@ void parse_dict_items_prime() {
 }
 
 void parse_dict_pair() {
-    cout << "DEBUG: Parsing dictionary key (string)" << endl;
-    parse_string_key();
+
+    cout << "DEBUG: Parsing dictionary key" << endl;
+
+
+
+    if (peek().type == "STRING_QUOTE") {
+
+        parse_string_key();  // already implemented
+
+    }
+
+    else if (peek().type == "IDENTIFIER") {
+
+        if (tokenIndex + 1 < tokens.size() && tokens[tokenIndex + 1].value == "(") {
+
+            parse_func_call();  // function call as key
+
+        } else {
+
+            match("IDENTIFIER");  // variable name as key
+
+        }
+
+    }
+
+    else if (peek().type == "NUMBER") {
+
+        match("NUMBER");  // numeric key
+
+    }
+
+    else if (peek().type == "KEYWORD" && 
+
+             (peek().value == "True" || peek().value == "False" || peek().value == "None")) {
+
+        match("KEYWORD");  // boolean/None key
+
+    }
+
+    else {
+
+        cout << "Syntax error: unsupported dictionary key type" << endl;
+
+        exit(1);
+
+    }
 
     if (peek().type == "OPERATOR" && peek().value == ":") {
+
         match("OPERATOR");  // ':'
-        parse_expression();
+        parse_expression(); // value expression
+
     } else {
+
         cout << "Syntax error: expected ':' in dictionary pair" << endl;
         exit(1);
     }
 }
 
-
 void parse_loop_statement_list() {
     cout << "DEBUG: Starting loop statement list" << endl;
-
     while (peek().type != "DEDENT" && peek().type != "END_OF_FILE") {
         parse_loop_statement();
     }
-
     cout << "DEBUG: Completed loop statement list" << endl;
 }
 
 void parse_loop_statement() {
     if (peek().value == "break") {
-        cout << "DEBUG: Found 'break' inside loop" << endl;
-        match("KEYWORD");
-        match("NEWLINE");
+        parse_break_stmt();
     }
     else if (peek().value == "continue") {
-        cout << "DEBUG: Found 'continue' inside loop" << endl;
-        match("KEYWORD");
-        match("NEWLINE");
+        parse_continue_stmt();
     }
     else {
         parse_statement();  // fall back to general statement parsing
     }
 }
 
+
+void parse_del_stmt() {
+    cout << "\nDEBUG: Starting delete statement parsing" << endl;
+
+    match("KEYWORD");  // 'del'
+    parse_del_target();
+    match("NEWLINE");
+
+    cout << "DEBUG: Delete statement parsing completed" << endl;
+}
+
+void parse_del_target() {
+    cout << "DEBUG: Starting delete target parsing" << endl;
+    match("IDENTIFIER");  
+    if(peek().type == "DELIMITER" && peek().value == "["){
+        match("DELIMITER");  // '['
+        parse_expression();  
+        match("DELIMITER");  // ']'
+    }
+    else if(peek().type == "DELIMITER" && peek().value == "."){
+        match("DELIMITER");  // '.'
+        match("IDENTIFIER");  // attribute to delete
+    }
+    else{
+        cout << "DEBUG: No additional delete target found" << endl;
+    }
+
+    cout << "DEBUG: Delete target parsing completed" << endl;
+}
+
 void parse_inline_if_else() {
     cout << "\nDEBUG: Starting inline if/else expression parsing" << endl;
     
-    // We've already parsed the first expression before 'if'
     match("KEYWORD");  // match 'if'
-    parse_expression();   // parse condition
+    parse_expression();  
     
     match("KEYWORD");  // match 'else'
     parse_expression();  // parse expression after else
 
     cout << "DEBUG: Inline if/else expression parsing completed" << endl;
 }
+
 
 void parse_string_key() {
     if (peek().type == "STRING_QUOTE") {
@@ -763,7 +1035,7 @@ void parse_class_def() {
     match("OPERATOR");       // ':'
     match("NEWLINE");
     match("INDENT");
-    parse_statement();
+    parse_statement_list();
     match("DEDENT");
 
     cout << "DEBUG: Class definition parsing completed" << endl;
@@ -779,7 +1051,6 @@ void parse_class_inheritance_opt() {
     }
 }
 
-//TRY CATCH BLOCKS
 void parse_try_stmt() {
     cout << "\nDEBUG: Starting try statement parsing" << endl;
     match("KEYWORD");  // 'try'
@@ -840,9 +1111,33 @@ void parse_finally_clause() {
     cout << "DEBUG: Finally clause parsing completed" << endl;
 }
 
+void parse_break_stmt() {
+    cout << "\nDEBUG: Parsing break statement" << endl;
+    match("KEYWORD");  // 'break'
+    
+    // Check if we're inside a loop
+    if (!is_inside_loop()) {
+        cout << "Syntax error: 'break' outside loop" << endl;
+        exit(1);
+    }
+    
+    match("NEWLINE");
+    cout << "DEBUG: Break statement parsed successfully" << endl;
+}
 
-
-
+void parse_continue_stmt() {
+    cout << "\nDEBUG: Parsing continue statement" << endl;
+    match("KEYWORD");  // 'continue'
+    
+    // Check if we're inside a loop
+    if (!is_inside_loop()) {
+        cout << "Syntax error: 'continue' outside loop" << endl;
+        exit(1);
+    }
+    
+    match("NEWLINE");
+    cout << "DEBUG: Continue statement parsed successfully" << endl;
+}
 
 int main() {
     string input;
