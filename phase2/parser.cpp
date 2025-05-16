@@ -541,13 +541,22 @@ void parse_func_def() {
     }
 
     match("OPERATOR");        // ':'
-    match("NEWLINE");
-    match("INDENT");
-    parse_statement_list();
-    match("DEDENT");
+
+    // Detect if it's a single-line body
+    if (peek().type != "NEWLINE") {
+        cout << "DEBUG: Detected single-line function definition" << endl;
+        parse_statement();  // just one statement (like return, assignment, etc.)
+    } else {
+        // Multiline function
+        match("NEWLINE");
+        match("INDENT");
+        parse_statement_list();
+        match("DEDENT");
+    }
 
     cout << "DEBUG: Function definition parsing completed" << endl;
 }
+
 void parse_param_list() {
     cout << "DEBUG: Starting parameter list parsing" << endl;
 

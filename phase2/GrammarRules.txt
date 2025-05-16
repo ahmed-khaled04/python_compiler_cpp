@@ -49,7 +49,13 @@ argument_list   → expression argument_list_prime
 argument_list_prime → ',' expression argument_list_prime
                     | ε
 
-func_def        → 'def' IDENTIFIER '(' param_list ')' return_type_opt ':' NEWLINE INDENT statement_list DEDENT
+func_def → 'def' IDENTIFIER '(' param_list ')' return_type_opt ':' simple_stmt_or_block
+
+simple_stmt_or_block → simple_stmt
+                      | NEWLINE INDENT statement_list DEDENT
+
+simple_stmt → statement
+
 
 return_type_opt → '->' type
                 | ε
