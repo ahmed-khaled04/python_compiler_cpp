@@ -59,12 +59,18 @@ void parse_inline_if_else();
 void parse_string_key();
 void parse_class_def();
 void parse_class_inheritance_opt();
-void parse_loop_statement_list();
-void parse_loop_statement();
 void parse_try_stmt();
 void parse_except_clauses();
 void parse_except_clause();
 void parse_finally_clause();
+void parse_del_stmt();
+void parse_del_target();
+void parse_assign_target();
+void parse_primary_target();
+void parse_assign_target_tail();
+void parse_continue_stmt();
+void parse_break_stmt();
+
 
 void next_token();
 bool match(string expectedType);
