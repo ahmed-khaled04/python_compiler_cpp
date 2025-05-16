@@ -1,0 +1,150 @@
+program         → statement program
+                | ε
+
+statement       → assignment
+                | augmented_assignment
+		| import_stmt
+		| class_def
+                | return_stmt
+                | if_stmt
+                | while_stmt
+                | for_stmt
+                | func_call
+                | func_def
+                | print_stmt
+                | 'pass' NEWLINE
+                | 'break' NEWLINE
+                | 'continue' NEWLINE
+                | NEWLINE
+                | ε
+
+assignment      → IDENTIFIER '=' expression NEWLINE
+
+augmented_assignment → IDENTIFIER aug_assign_op expression NEWLINE
+
+aug_assign_op   → '+=' | '-=' | '=' | '/=' | '%=' | '//=' | '*='
+
+return_stmt     → 'return' expression NEWLINE
+
+if_stmt         → 'if' expression ':' NEWLINE INDENT statement_list DEDENT elif_parts else_part
+
+elif_parts      → 'elif' expression ':' NEWLINE INDENT statement_list DEDENT elif_parts
+                | ε
+
+else_part       → 'else' ':' NEWLINE INDENT statement_list DEDENT
+                | ε
+
+while_stmt      → 'while' expression ':' NEWLINE INDENT statement_list DEDENT
+
+for_stmt        → 'for' IDENTIFIER 'in' expression ':' NEWLINE INDENT statement_list DEDENT
+
+print_stmt      → 'print' '(' expression ')' NEWLINE
+
+func_call       → IDENTIFIER '(' argument_list ')' NEWLINE
+
+argument_list   → expression argument_list_prime
+                | ε
+
+argument_list_prime → ',' expression argument_list_prime
+                    | ε
+
+func_def        → 'def' IDENTIFIER '(' param_list ')' return_type_opt ':' NEWLINE INDENT statement_list DEDENT
+
+return_type_opt → '->' type
+                | ε
+
+param_list      → param param_list_prime
+                | ε
+
+param_list_prime → ',' param param_list_prime
+                 | ε
+
+param           → IDENTIFIER
+                | IDENTIFIER '=' expression
+
+type            → 'int' | 'float' | 'str' | 'bool' | 'None'
+
+statement_list  → statement statement_list
+                | ε
+
+expression      → bool_term bool_expr_prime inline_if_else_opt
+
+inline_if_else_opt → 'if' expression 'else' expression
+                   | ε
+
+
+bool_expr_prime → 'or' bool_term bool_expr_prime
+                | ε
+
+bool_term       → bool_factor bool_term_prime
+
+bool_term_prime → 'and' bool_factor bool_term_prime
+                | ε
+
+bool_factor     → 'not' bool_factor
+                | '(' expression ')'
+                | rel_expr
+
+rel_expr        → arith_expr rel_op arith_expr
+                | arith_expr
+
+rel_op          → '==' | '!=' | '<' | '<=' | '>' | '>='
+
+arith_expr      → term arith_expr_prime
+
+arith_expr_prime → '+' term arith_expr_prime
+                 | '-' term arith_expr_prime
+                 | ε
+
+term            → factor term_prime
+
+term_prime      → '*' factor term_prime
+                | '/' factor term_prime
+                | ε
+
+factor          → '-' factor
+                | '(' expression ')'
+                | IDENTIFIER
+                | IDENTIFIER '[' expression ']'
+                | NUMBER
+                | 'True'
+                | 'False'
+                | 'None'
+                | STRING
+                | list_literal
+                | dict_literal
+                | func_call
+
+list_literal    → '[' list_items ']'
+
+list_items      → expression list_items_prime
+                | ε
+
+list_items_prime → ',' expression list_items_prime
+                 | ε
+
+dict_literal    → '{' dict_items '}'
+
+dict_items      → dict_pair dict_items_prime
+                | ε
+
+dict_items_prime → ',' dict_pair dict_items_prime
+                 | ε
+
+dict_pair       → STRING ':' expression
+
+import_stmt     → 'import' import_item import_tail NEWLINE
+                | 'from' IDENTIFIER 'import' import_item import_tail NEWLINE
+
+import_item     → IDENTIFIER import_alias_opt
+
+import_tail     → ',' import_item import_tail
+                | ε
+
+import_alias_opt → 'as' IDENTIFIER
+                 | ε
+
+class_def       → 'class' IDENTIFIER class_inheritance_opt ':' NEWLINE INDENT statement DEDENT
+
+class_inheritance_opt → '(' IDENTIFIER ')' 
+                       | ε

@@ -88,13 +88,17 @@ void parse_statement() {
             exit(1);
         }
     }
-    else if (peek().value == "import") {
+    else if (peek().value == "import" || peek().value == "from") {
     cout << "DEBUG: Found import statement" << endl;
     parse_import_stmt();
     }
     else if (peek().value == "def") {
     cout << "DEBUG: Found function definition" << endl;
     parse_func_def();
+    }
+    else if (peek().value == "class") {
+    cout << "DEBUG: Found class definition" << endl;
+    parse_class_def();
     }
     else if (peek().value == "return") {
         cout << "DEBUG: Found return statement" << endl;
@@ -414,14 +418,14 @@ void parse_factor(){
         cout << "DEBUG: Found identifier" << endl;
         match("IDENTIFIER");
     }
-    // else if (peek().value == "{") {
-    // cout << "DEBUG: Found dictionary literal" << endl;
-    // parse_dict_literal();
-    // }
-    // else if (peek().type == "STRING") {
-    // cout << "DEBUG: Found string literal" << endl;
-    // match("STRING");
-    // }
+    else if (peek().value == "{") {
+    cout << "DEBUG: Found dictionary literal" << endl;
+    parse_dict_literal();
+    }
+    else if (peek().type == "STRING") {
+    cout << "DEBUG: Found string literal" << endl;
+    match("STRING");
+    }
 
     else if(peek().type == "NUMBER"){
         cout << "DEBUG: Found number" << endl;
@@ -581,13 +585,27 @@ void parse_type() {
 void parse_import_stmt() {
     cout << "\nDEBUG: Starting import statement parsing" << endl;
 
-    match("KEYWORD");  // 'import'
-    parse_import_item();
-    parse_import_tail();
-    match("NEWLINE");
+    if (peek().value == "import") {
+        match("KEYWORD");  // 'import'
+        parse_import_item();
+        parse_import_tail();
+    } 
+    else if (peek().value == "from") {
+        match("KEYWORD");        // 'from'
+        match("IDENTIFIER");     // module name
+        match("KEYWORD");        // 'import'
+        parse_import_item();
+        parse_import_tail();
+    } 
+    else {
+        cout << "Syntax error: expected 'import' or 'from'" << endl;
+        exit(1);
+    }
 
+    match("NEWLINE");
     cout << "DEBUG: Import statement parsing completed" << endl;
 }
+
 
 void parse_import_item() {
     if (peek().type == "IDENTIFIER") {
@@ -621,45 +639,43 @@ void parse_import_alias_opt() {
     }
 }
 
-// void parse_dict_literal() {
-//     cout << "\nDEBUG: Starting dictionary literal parsing" << endl;
+void parse_dict_literal() {
+    cout << "\nDEBUG: Starting dictionary literal parsing" << endl;
 
-//     match("DELIMITER");  // '{'
+    match("DELIMITER");  // '{'
 
-//     if (peek().value != "}") {
-//         parse_dict_pair();
-//         parse_dict_items_prime();
-//     } else {
-//         cout << "DEBUG: Empty dictionary" << endl;
-//     }
+    if (peek().value != "}") {
+        parse_dict_pair();
+        parse_dict_items_prime();
+    } else {
+        cout << "DEBUG: Empty dictionary" << endl;
+    }
 
-//     match("DELIMITER");  // '}'
+    match("DELIMITER");  // '}'
 
-//     cout << "DEBUG: Dictionary literal parsing completed" << endl;
-// }
+    cout << "DEBUG: Dictionary literal parsing completed" << endl;
+}
 
-// void parse_dict_items_prime() {
-//     while (peek().type == "DELIMITER" && peek().value == ",") {
-//         match("DELIMITER");
-//         parse_dict_pair();
-//     }
-// }
+void parse_dict_items_prime() {
+    while (peek().type == "DELIMITER" && peek().value == ",") {
+        match("DELIMITER");
+        parse_dict_pair();
+    }
+}
 
-// void parse_dict_pair() {
-//     if (peek().type == "STRING") {
-//         match("STRING");
-//         if (peek().type == "OPERATOR" && peek().value == ":") {
-//             match("OPERATOR");
-//             parse_expression();
-//         } else {
-//             cout << "Syntax error: expected ':' in dictionary pair" << endl;
-//             exit(1);
-//         }
-//     } else {
-//         cout << "Syntax error: dictionary keys must be STRING" << endl;
-//         exit(1);
-//     }
-// }
+void parse_dict_pair() {
+    cout << "DEBUG: Parsing dictionary key (string)" << endl;
+    parse_string_key();
+
+    if (peek().type == "OPERATOR" && peek().value == ":") {
+        match("OPERATOR");  // ':'
+        parse_expression();
+    } else {
+        cout << "Syntax error: expected ':' in dictionary pair" << endl;
+        exit(1);
+    }
+}
+
 
 void parse_loop_statement_list() {
     cout << "DEBUG: Starting loop statement list" << endl;
@@ -699,6 +715,53 @@ void parse_inline_if_else() {
 
     cout << "DEBUG: Inline if/else expression parsing completed" << endl;
 }
+
+void parse_string_key() {
+    if (peek().type == "STRING_QUOTE") {
+        match("STRING_QUOTE");         // opening quote
+        if (peek().type == "STRING_LITERAL") {
+            match("STRING_LITERAL");   // string content
+        } else {
+            cout << "Syntax error: expected string literal inside quotes" << endl;
+            exit(1);
+        }
+        if (peek().type == "STRING_QUOTE") {
+            match("STRING_QUOTE");     // closing quote
+        } else {
+            cout << "Syntax error: expected closing quote" << endl;
+            exit(1);
+        }
+    } else {
+        cout << "Syntax error: expected opening quote for string key" << endl;
+        exit(1);
+    }
+}
+
+void parse_class_def() {
+    cout << "\nDEBUG: Starting class definition parsing" << endl;
+
+    match("KEYWORD");        // 'class'
+    match("IDENTIFIER");     // class name
+    parse_class_inheritance_opt();
+    match("OPERATOR");       // ':'
+    match("NEWLINE");
+    match("INDENT");
+    parse_statement();
+    match("DEDENT");
+
+    cout << "DEBUG: Class definition parsing completed" << endl;
+}
+
+void parse_class_inheritance_opt() {
+    if (peek().value == "(") {
+        match("DELIMITER");      // '('
+        match("IDENTIFIER");     // base class
+        match("DELIMITER");      // ')'
+    } else {
+        cout << "DEBUG: No base class (inheritance) specified" << endl;
+    }
+}
+
 
 
 
