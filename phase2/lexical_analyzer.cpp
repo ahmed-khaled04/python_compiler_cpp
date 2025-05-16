@@ -381,51 +381,39 @@ vector<Token> tokenize(const string& source) {
                     i += 2; // Skip next two dots
                 }
                 else if (c == '\n') {
-                    // First process any current token
                     flushCurrentToken();
-                    // Add NEWLINE token with current line number
                     tokens.push_back({"NEWLINE", "\\n", lineNumber});
-                    // Then increment line number for next line
                     lineNumber++;
                     atLineStart = true;
                     currentIndent = 0;
                     continue;
                 }
                 else if (isalpha(c) || c == '_') {
-                    tokenStartLine = lineNumber; // start number token
+                    tokenStartLine = lineNumber;
                     currentToken += c;
                     state = State::IN_IDENTIFIER;
                 }
                 else if (isdigit(c)) {
-                    tokenStartLine = lineNumber; // start number token
+                    tokenStartLine = lineNumber;
+                    currentToken += c;
+                    state = State::IN_NUMBER;
+                }
+                else if (c == '-' && i + 1 < source.size() && isdigit(source[i + 1])) {
+                    // Always treat - followed by digit as start of negative number
+                    tokenStartLine = lineNumber;
                     currentToken += c;
                     state = State::IN_NUMBER;
                 }
                 else if (c == ':') {
-                    tokenStartLine = lineNumber; // start operator token
+                    tokenStartLine = lineNumber;
                     currentToken += c;
                     state = State::IN_OPERATOR;
-                }
-                else if (c == '-' && i + 1 < source.size() && isdigit(source[i + 1])) {
-                    // Check if previous token was equals sign
-                    if (!tokens.empty() && tokens.back().value == "=") {
-                        // This is a negative number after equals
-                        tokenStartLine = lineNumber;
-                        currentToken += c;
-                        state = State::IN_NUMBER;
-                    } else {
-                        // Handle as normal operator
-                        tokenStartLine = lineNumber;
-                        currentToken += c;
-                        state = State::IN_OPERATOR;
-                    }
                 }
                 else if (isOperator(string(1, c))) {
-                    tokenStartLine = lineNumber; // start operator token
+                    tokenStartLine = lineNumber;
                     currentToken += c;
                     state = State::IN_OPERATOR;
                 }
-
                 else if (c == '\'' || c == '"') {
                     // Check if this is a triple quote
                     if (i + 2 < source.size() && source[i+1] == c && source[i+2] == c) {
@@ -470,26 +458,6 @@ vector<Token> tokenize(const string& source) {
                 else if (c == '#') {
                     tokenStartLine = lineNumber;
                     state = State::IN_COMMENT;
-                }
-                else if (c == '-' && i + 1 < source.size() && isdigit(source[i + 1])) {
-                    if (lastTokenType.empty() || lastTokenType == "OPERATOR" || lastTokenType == "DELIMITER") {
-                        tokenStartLine = lineNumber; // start negative number token
-                        state = State::IN_NUMBER;
-                        currentToken += c;
-                    } else {
-                        tokenStartLine = lineNumber; // start operator token
-                        state = State::IN_OPERATOR;
-                        std::string opStr(1, c);
-                        while (i + 1 < source.size() && isOperatorChar(source[i + 1])) {
-                            opStr.push_back(source[i + 1]);
-                            i++;
-                        }
-                        if (isOperator(opStr)) {
-                            tokens.push_back({"OPERATOR", opStr, tokenStartLine});
-                        } else {
-                            std::cerr << "Error: Invalid operator at line " << tokenStartLine << ": " << opStr << std::endl;
-                        }
-                    }
                 }
                 else if (isOperatorChar(c)) {
                     tokenStartLine = lineNumber;
