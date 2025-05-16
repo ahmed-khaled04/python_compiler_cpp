@@ -88,6 +88,14 @@ void parse_statement() {
             exit(1);
         }
     }
+    else if (peek().value == "import") {
+    cout << "DEBUG: Found import statement" << endl;
+    parse_import_stmt();
+    }
+    else if (peek().value == "def") {
+    cout << "DEBUG: Found function definition" << endl;
+    parse_func_def();
+    }
     else if (peek().value == "return") {
         cout << "DEBUG: Found return statement" << endl;
         parse_return_stmt();
@@ -187,7 +195,7 @@ void parse_while_stmt(){
     match("OPERATOR");
     match("NEWLINE");
     match("INDENT");
-    parse_statement_list();
+    parse_loop_statement_list();
     match("DEDENT");
     cout << "DEBUG: While statement parsing completed" << endl;
 }
@@ -208,7 +216,15 @@ void parse_argument_list() {
     cout << "\nDEBUG: Starting argument list parsing" << endl;
     if (peek().type != "DELIMITER" || peek().value != ")") {
         cout << "DEBUG: Found first argument" << endl;
-        parse_expression();           // First argument
+        if (peek().type == "STRING_QUOTE") {
+            match("STRING_QUOTE");  // Match opening quote
+            if (peek().type == "STRING_LITERAL") {
+                match("STRING_LITERAL");  // Match string content
+            }
+            match("STRING_QUOTE");  // Match closing quote
+        } else {
+            parse_expression();  // Handle other types of arguments
+        }
         parse_argument_list_prime();  // Check for additional ones
     } else {
         cout << "DEBUG: Empty argument list" << endl;
@@ -244,6 +260,8 @@ void parse_statement_list(){
 
 void parse_expression(){
     cout << "\nDEBUG: Starting expression parsing" << endl;
+    cout << "DEBUG: Current token in expression - Type: " << peek().type 
+         << ", Value: '" << peek().value << "'" << endl;
     parse_bool_term();
     parse_bool_expr_prime();
     cout << "DEBUG: Expression parsing completed" << endl;
@@ -262,6 +280,8 @@ void parse_bool_expr_prime(){
 
 void parse_bool_term(){
     cout << "DEBUG: Starting boolean term parsing" << endl;
+    cout << "DEBUG: Current token in bool_term - Type: " << peek().type 
+         << ", Value: '" << peek().value << "'" << endl;
     parse_bool_factor();
     parse_bool_term_prime();
     cout << "DEBUG: Boolean term parsing completed" << endl;
@@ -280,6 +300,8 @@ void parse_bool_term_prime(){
 
 void parse_bool_factor(){
     cout << "DEBUG: Starting boolean factor parsing" << endl;
+    cout << "DEBUG: Current token in bool_factor - Type: " << peek().type 
+         << ", Value: '" << peek().value << "'" << endl;
     if(peek().type == "OPERATOR" && peek().value == "not"){
         cout << "DEBUG: Found 'not' operator" << endl;
         match("OPERATOR");
@@ -293,6 +315,8 @@ void parse_bool_factor(){
 
 void parse_rel_expr(){
     cout << "DEBUG: Starting relational expression parsing" << endl;
+    cout << "DEBUG: Current token in rel_expr - Type: " << peek().type 
+         << ", Value: '" << peek().value << "'" << endl;
     parse_arith_expr();
     if(peek().type == "OPERATOR" && (peek().value == ">" || peek().value == "<" || 
        peek().value == "==" || peek().value == "!=" || peek().value == ">=" || 
@@ -319,6 +343,8 @@ void parse_rel_op(){
 
 void parse_arith_expr(){
     cout << "DEBUG: Starting arithmetic expression parsing" << endl;
+    cout << "DEBUG: Current token in arith_expr - Type: " << peek().type 
+         << ", Value: '" << peek().value << "'" << endl;
     parse_term();
     parse_arith_expr_prime();
     cout << "DEBUG: Arithmetic expression parsing completed" << endl;
@@ -340,6 +366,8 @@ void parse_arith_expr_prime(){
 
 void parse_term(){
     cout << "DEBUG: Starting term parsing" << endl;
+    cout << "DEBUG: Current token in term - Type: " << peek().type 
+         << ", Value: '" << peek().value << "'" << endl;
     parse_factor();
     parse_term_prime();
     cout << "DEBUG: Term parsing completed" << endl;
@@ -361,7 +389,7 @@ void parse_term_prime(){
 
 void parse_factor(){
     cout << "DEBUG: Starting factor parsing" << endl;
-    cout << "DEBUG: Current token - Type: " << peek().type 
+    cout << "DEBUG: Current token in factor - Type: " << peek().type 
          << ", Value: '" << peek().value << "'" << endl;
     
     if(peek().value == "("){
@@ -374,9 +402,26 @@ void parse_factor(){
         cout << "DEBUG: Found identifier" << endl;
         match("IDENTIFIER");
     }
+    // else if (peek().value == "{") {
+    // cout << "DEBUG: Found dictionary literal" << endl;
+    // parse_dict_literal();
+    // }
+    // else if (peek().type == "STRING") {
+    // cout << "DEBUG: Found string literal" << endl;
+    // match("STRING");
+    // }
+
     else if(peek().type == "NUMBER"){
         cout << "DEBUG: Found number" << endl;
         match("NUMBER");
+    }
+    else if (peek().type == "STRING_QUOTE") {
+        cout << "DEBUG: Found string literal" << endl;
+        match("STRING_QUOTE");  // Match opening quote
+        if (peek().type == "STRING_LITERAL") {
+            match("STRING_LITERAL");  // Match string content
+        }
+        match("STRING_QUOTE");  // Match closing quote
     }
     else if (peek().value == "[") {
     cout << "DEBUG: Found list literal" << endl;
@@ -424,7 +469,7 @@ void parse_for_stmt() {
     match("OPERATOR");        // ':'
     match("NEWLINE");
     match("INDENT");
-    parse_statement_list();
+    parse_loop_statement_list();
     match("DEDENT");
 
     cout << "DEBUG: For-loop parsing completed" << endl;
@@ -457,6 +502,176 @@ void parse_list_items_prime() {
         parse_list_items_prime();
     } else {
         cout << "DEBUG: No more list items" << endl;
+    }
+}
+
+void parse_func_def() {
+    cout << "\nDEBUG: Starting function definition parsing" << endl;
+
+    match("KEYWORD");         // 'def'
+    match("IDENTIFIER");      // function name
+    match("DELIMITER");       // '('
+    parse_param_list();
+    match("DELIMITER");       // ')'
+
+    // Optional return type
+    if (peek().type == "OPERATOR" && peek().value == "->") {
+        match("OPERATOR");
+        parse_type();
+    }
+
+    match("OPERATOR");        // ':'
+    match("NEWLINE");
+    match("INDENT");
+    parse_statement_list();
+    match("DEDENT");
+
+    cout << "DEBUG: Function definition parsing completed" << endl;
+}
+void parse_param_list() {
+    cout << "DEBUG: Starting parameter list parsing" << endl;
+
+    if (peek().type == "IDENTIFIER") {
+        parse_param();
+
+        while (peek().type == "DELIMITER" && peek().value == ",") {
+            match("DELIMITER");
+            parse_param();
+        }
+    }
+
+    cout << "DEBUG: Parameter list parsing completed" << endl;
+}
+
+void parse_param() {
+    match("IDENTIFIER");
+
+    if (peek().type == "OPERATOR" && peek().value == "=") {
+        match("OPERATOR");
+        parse_expression();
+    }
+}
+
+void parse_type() {
+    if (peek().type == "KEYWORD" && 
+        (peek().value == "int" || peek().value == "float" || 
+         peek().value == "str" || peek().value == "bool" || 
+         peek().value == "None")) 
+    {
+        match("KEYWORD");
+    } else {
+        cout << "Syntax error: expected type but found " << peek().type 
+             << " with value '" << peek().value << "'" << endl;
+        exit(1);
+    }
+}
+
+void parse_import_stmt() {
+    cout << "\nDEBUG: Starting import statement parsing" << endl;
+
+    match("KEYWORD");  // 'import'
+    parse_import_item();
+    parse_import_tail();
+    match("NEWLINE");
+
+    cout << "DEBUG: Import statement parsing completed" << endl;
+}
+
+void parse_import_item() {
+    if (peek().type == "IDENTIFIER") {
+        match("IDENTIFIER");
+        parse_import_alias_opt();
+    } else {
+        cout << "Syntax error: expected module name in import" << endl;
+        exit(1);
+    }
+}
+
+
+void parse_import_tail() {
+    while (peek().type == "DELIMITER" && peek().value == ",") {
+        match("DELIMITER");      // ','
+        parse_import_item();
+    }
+}
+
+void parse_import_alias_opt() {
+    if (peek().value == "as") {
+        match("KEYWORD");        // 'as'
+        if (peek().type == "IDENTIFIER") {
+            match("IDENTIFIER");  // alias
+        } else {
+            cout << "Syntax error: expected alias after 'as'" << endl;
+            exit(1);
+        }
+    } else {
+        cout << "DEBUG: No alias in import" << endl;
+    }
+}
+
+// void parse_dict_literal() {
+//     cout << "\nDEBUG: Starting dictionary literal parsing" << endl;
+
+//     match("DELIMITER");  // '{'
+
+//     if (peek().value != "}") {
+//         parse_dict_pair();
+//         parse_dict_items_prime();
+//     } else {
+//         cout << "DEBUG: Empty dictionary" << endl;
+//     }
+
+//     match("DELIMITER");  // '}'
+
+//     cout << "DEBUG: Dictionary literal parsing completed" << endl;
+// }
+
+// void parse_dict_items_prime() {
+//     while (peek().type == "DELIMITER" && peek().value == ",") {
+//         match("DELIMITER");
+//         parse_dict_pair();
+//     }
+// }
+
+// void parse_dict_pair() {
+//     if (peek().type == "STRING") {
+//         match("STRING");
+//         if (peek().type == "OPERATOR" && peek().value == ":") {
+//             match("OPERATOR");
+//             parse_expression();
+//         } else {
+//             cout << "Syntax error: expected ':' in dictionary pair" << endl;
+//             exit(1);
+//         }
+//     } else {
+//         cout << "Syntax error: dictionary keys must be STRING" << endl;
+//         exit(1);
+//     }
+// }
+
+void parse_loop_statement_list() {
+    cout << "DEBUG: Starting loop statement list" << endl;
+
+    while (peek().type != "DEDENT" && peek().type != "END_OF_FILE") {
+        parse_loop_statement();
+    }
+
+    cout << "DEBUG: Completed loop statement list" << endl;
+}
+
+void parse_loop_statement() {
+    if (peek().value == "break") {
+        cout << "DEBUG: Found 'break' inside loop" << endl;
+        match("KEYWORD");
+        match("NEWLINE");
+    }
+    else if (peek().value == "continue") {
+        cout << "DEBUG: Found 'continue' inside loop" << endl;
+        match("KEYWORD");
+        match("NEWLINE");
+    }
+    else {
+        parse_statement();  // fall back to general statement parsing
     }
 }
 
