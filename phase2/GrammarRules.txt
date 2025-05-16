@@ -9,6 +9,7 @@ statement       → assignment
                 | for_stmt
                 | func_call
                 | func_def
+                | try_stmt
                 | 'pass' NEWLINE
                 | 'break' NEWLINE
                 | 'continue' NEWLINE
@@ -126,3 +127,19 @@ dict_items_prime → ',' dict_pair dict_items_prime
                  | ε
 
 dict_pair       → STRING ':' expression
+
+try_stmt        → 'try' ':' NEWLINE INDENT statement_list DEDENT except_clauses finally_clause
+
+except_clauses   → except_clause except_clauses
+                | ε
+
+except_clause    → 'except' exception_type_opt exception_var_opt ':' NEWLINE INDENT statement_list DEDENT
+
+exception_type_opt → type
+                   | ε
+
+exception_var_opt  → 'as' IDENTIFIER
+                   | ε
+
+finally_clause   → 'finally' ':' NEWLINE INDENT statement_list DEDENT
+                | ε
