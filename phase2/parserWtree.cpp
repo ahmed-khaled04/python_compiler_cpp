@@ -1230,6 +1230,11 @@ shared_ptr<ParseTreeNode> parse_loop_statement_list() {
     while (peek().type != "DEDENT" && peek().type != "END_OF_FILE") {
         auto stmt = parse_loop_statement();
         if (stmt) node->addChild(stmt);
+        // ADD THIS CHECK:
+        if (error_recovery) {
+            error_recovery = false;
+            break;
+        }
     }
     cout << "DEBUG: Completed loop statement list" << endl;
     return node;
